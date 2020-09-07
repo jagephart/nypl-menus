@@ -12,7 +12,6 @@ library(caret)
 library(quanteda)
 library(doSNOW) #run model to run in each core
 library(cld3)
-library(textcat)
 library(googleLanguageR)
 ```
 
@@ -20,7 +19,7 @@ library(googleLanguageR)
 ## Load and review dataset
 ```{r}
 #load dataset
-df <- read_csv("Seafood_Dishes.csv")
+df <- read_csv("/Users/alannurcahyo/Documents/Documents/AU/fall2020/DATA/Seafood_Dishes.csv")
 unique(df$seafood_yn) ##check label
 df.labeled <- df%>%
   select(-description) %>%
@@ -29,30 +28,16 @@ df.labeled <- df%>%
 prop.table(table(df.labeled$seafood_yn))
 ```
 
-Q: # do we need to translate? 
+Translate
 ```{r}
-#detect langauage -- cld3 didn't return appropriate detection
-df.labeled.cld3 <- df%>%
-  select(-description) %>%
-  filter(seafood_yn %in% c(0,1)) %>%
+#detect langauage -- cld3 
+df.labeled.cld3 <- df.labeled%>%
   mutate(name = str_to_lower(name),
          lang = cld3::detect_language(name))
-
 df.labeled.cld3 %>%
-  filter(lang == "french")
-unique(df.labeled.cld3$lang)
-#detect langauage -- textcat didn't return appropriate detection
+  filter(lang == "en")
 
-df.labeled.textcat <- df%>%
-  select(-description) %>%
-  filter(seafood_yn %in% c(0,1)) %>%
-  mutate(name = str_to_lower(name),
-         lang = textcat::textcat(name))
-df.labeled.textcat %>%
-  filter(lang == "french")
-unique(df.labeled.textcat$lang)
-
-# should we use Google API?
+# estimate cost we use Google API?
 df.labeled.count <- df.labeled%>%
   mutate(text.length = nchar(name))
 estimated.cost <- sum(df.labeled.count$text.length)/500000*20 #for labeled data only, per call
@@ -79,6 +64,29 @@ df.labeled <- cbind(df.labeled, df.name.translate.bind)
 df.labeled <- df.labeled %>%
   select(-text)
 head(df.labeled)
+
+
+## Comparation between cld3 and GoogleAPI  -- googleAPI is outperform cld3 in language detection
+
+df.name.translate.bind %>%
+  group_by(detectedSourceLanguage) %>%
+  tally() %>%
+  arrange(desc(n)) %>%
+  mutate(prop = n/nrow(df.name.translate.bind)) %>%
+  slice(1:5) %>%
+  ggplot(aes(detectedSourceLanguage,prop)) + geom_col() +
+  theme_bw() + labs(title = "top 5 language by google")
+
+df.labeled.cld3 %>%
+  group_by(lang) %>%
+  tally() %>%
+  arrange(desc(n)) %>%
+  mutate(prop = n/nrow(df.name.translate.bind)) %>%
+  slice(1:5) %>%
+  ggplot(aes(lang,prop)) + geom_col() +
+  theme_bw() + labs(title = "top 5 language by cld3")
+
+
 ```
 
 # create training and test
