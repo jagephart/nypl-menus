@@ -1,0 +1,156 @@
+---
+title: "seafood"
+author: "Alan Nurcahyo"
+date: "9/5/2020"
+output: pdf_document
+---
+
+```{r message=FALSE}
+#library used
+library(tidyverse)
+library(caret)
+library(quanteda)
+library(doSNOW) #run model to run in each core
+library(cld3)
+library(textcat)
+library(googleLanguageR)
+```
+
+# Preprocessing
+## Load and review dataset
+```{r}
+#load dataset
+df <- read_csv("Seafood_Dishes.csv")
+unique(df$seafood_yn) ##check label
+df.labeled <- df%>%
+  select(-description) %>%
+  filter(seafood_yn %in% c(0,1))
+
+prop.table(table(df.labeled$seafood_yn))
+```
+
+Q: # do we need to translate? 
+```{r}
+#detect langauage -- cld3 didn't return appropriate detection
+df.labeled.cld3 <- df%>%
+  select(-description) %>%
+  filter(seafood_yn %in% c(0,1)) %>%
+  mutate(name = str_to_lower(name),
+         lang = cld3::detect_language(name))
+
+df.labeled.cld3 %>%
+  filter(lang == "french")
+unique(df.labeled.cld3$lang)
+#detect langauage -- textcat didn't return appropriate detection
+
+df.labeled.textcat <- df%>%
+  select(-description) %>%
+  filter(seafood_yn %in% c(0,1)) %>%
+  mutate(name = str_to_lower(name),
+         lang = textcat::textcat(name))
+df.labeled.textcat %>%
+  filter(lang == "french")
+unique(df.labeled.textcat$lang)
+
+# should we use Google API?
+df.labeled.count <- df.labeled%>%
+  mutate(text.length = nchar(name))
+estimated.cost <- sum(df.labeled.count$text.length)/500000*20 #for labeled data only, per call
+```
+
+
+```{r}
+
+## use google API
+gl_auth("seafood-translation-f329aa685c7f.json")
+df.name.translate <- vector(mode = "list", length = nrow(df.labeled))
+
+for (i in seq_along(df.name.translate)) {
+     df.name.translate[[i]] <- gl_translate(df.labeled$name[i], target = "en")
+}
+
+df.name.translate.bind <- do.call(rbind, df.name.translate)
+prop.table(table(df.name.translate.bind$detectedSourceLanguage))
+
+write.csv(df.name.translate.bind,"NameTranslated.csv")
+
+##use translated as our dataset
+df.labeled <- cbind(df.labeled, df.name.translate.bind)
+df.labeled <- df.labeled %>%
+  select(-text)
+head(df.labeled)
+```
+
+# create training and test
+
+```{r}
+set.seed(1234)
+
+#create index of stratified 70:30 split that maintain proportion of label.
+index <- caret::createDataPartition(df.labeled$seafood_yn, times = 1,
+                                    p = 0.7, list= FALSE) 
+
+# train and test
+train <- df.labeled[index,]
+test <- df.labeled[-index,]
+
+##verify
+prop.table(table(train$seafood_yn))
+prop.table(table(test$seafood_yn))
+```
+
+
+## preprocess train
+```{r}
+corpus <- corpus(train$translatedText) #create a corpus
+
+
+#create document frequency matrix in a go
+dfm.train <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+
+view(dfm.train[1:20,1:100])
+
+##setup feature dataframe with label
+train.token <- cbind(label=as.factor(train$seafood_yn), convert(dfm.train[,-1], to = "data.frame"))
+
+## Make syntactically valid column names out of character vectors.
+names(train.token) <- make.names(names(train.token))
+```
+
+# make models use only names - Error: protect(): protection stack overflow
+```{r}
+set.seed(1234)
+# use caret package to make stratified 10-fold cross validation repeated
+
+cv.folds <- createMultiFolds(train$seafood_yn, k = 10, times = 1)
+cv.control <- trainControl(method = "repeatedcv", number = 10,
+                           repeats = 1, index = cv.folds)
+
+# time the code execution
+start.time <- Sys.time()
+
+#create cluster to work on 3 cores using doSNOW package to cut time execution
+cl <- makeCluster(2, type="SOCK")
+registerDoSNOW(cl)
+
+# build decision tree - rpart
+rpart.cv.1 <- train(label~.,data = train.token, 
+                    method = "rpart",
+                    trcontrol = cv.control,
+                    tuneLength = 7)
+
+# when processing is done, stop cluster
+stopCluster(cl)
+
+total.time <- Sys.time() - start.time
+```
+
+
