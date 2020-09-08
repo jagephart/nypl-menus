@@ -129,6 +129,11 @@ dfm.train <- dfm(corpus,
 
 view(dfm.train[1:20,1:100])
 
+
+## Make syntactically valid column names out of character vectors.
+names(train.token) <- make.names(names(train.token))
+train.token <- train.token[-2]
+
 ############## make TF-IDF version of data
 ## make tf function
 term.frequency <- function(row){
@@ -152,7 +157,7 @@ tf.idf <- function(tf,idf) {
 dfm.train.tf <- apply(dfm.train, 1, term.frequency)
 dim(dfm.train)
 
-## make idf 
+## make idf . This IDF will be used again later in test dataset
 dfm.train.idf <- apply(dfm.train, 2, inverse.doc.freq)
 
 ## make tf-idf matrix 
@@ -182,19 +187,17 @@ start.time <- Sys.time()
 ### perform SVD to decrease dimentionality  to 300 using package irlba
 train.irlba <- irlba(t(dfm.train.tfidf), nv = 300, maxit = 600)
 
-## total time
-total.time <- Sys.time() - start.time
+## total time ~12 minutes
+total.time <- Sys.time() - start.time 
+
+
+## save svd value for test data
+sigma.inverse <- 1/train.irlba$d
+u.transpose <- t(train.irlba$u)
 
 ##setup feature dataframe with label
-train.svd <- cbind(label=as.factor(train$seafood_yn), convert(dfm.train.tfidf, to = "data.frame"))
-
-## Make syntactically valid column names out of character vectors.
-names(train.token) <- make.names(names(train.token))
-train.token <- train.token[-2]
-
-## save train dataset for future use
-save(train.token, file = "train.token.Rdata")
-
+train.svd <- data.frame(label=as.factor(train$seafood_yn), train.irlba$v)
+dim(train.svd)
 ```
 
 # make models use only names 
@@ -202,7 +205,6 @@ save(train.token, file = "train.token.Rdata")
 ## - try to tweak default R setting: Error: vector memory exhausted (limit reached?)
 ## solution to try: 1. use feature selection to decrease variable 2. use GPU Cloud? 
 ```{r}
-load("train.token.Rdata")
 set.seed(1234)
 # use caret package to make stratified 10-fold cross validation repeated
 
@@ -218,9 +220,9 @@ cl <- makeCluster(2, type="SOCK")
 registerDoSNOW(cl)
 
 # build decision tree - rpart
-rpart.cv.1 <- train(label~.,data = train.token, 
+rpart.cv.1 <- train(label~.,data = train.svd, 
                     method = "rf",
-                    # trcontrol = cv.control,
+                    trcontrol = cv.control,
                     tuneLength = 3)
 # when processing is done, stop cluster
 stopCluster(cl)
