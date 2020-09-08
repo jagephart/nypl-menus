@@ -111,9 +111,10 @@ prop.table(table(test$seafood_yn))
 ```
 
 
-## preprocess train
+## preprocess training set
 ```{r}
-corpus <- corpus(train$translatedText) #create a corpus
+#create a corpus
+corpus <- corpus(train$translatedText) 
 
 
 #create document frequency matrix in a go
@@ -129,12 +130,11 @@ dfm.train <- dfm(corpus,
 
 view(dfm.train[1:20,1:100])
 
-
 ## Make syntactically valid column names out of character vectors.
 names(train.token) <- make.names(names(train.token))
 train.token <- train.token[-2]
 
-############## make TF-IDF version of data
+############## make TF-IDF version of data ##################
 ## make tf function
 term.frequency <- function(row){
   row/sum(row)
@@ -157,7 +157,7 @@ tf.idf <- function(tf,idf) {
 dfm.train.tf <- apply(dfm.train, 1, term.frequency)
 dim(dfm.train)
 
-## make idf . This IDF will be used again later in test dataset
+## make idf . NOTe: This IDF will be used again later in test dataset
 dfm.train.idf <- apply(dfm.train, 2, inverse.doc.freq)
 
 ## make tf-idf matrix 
@@ -169,14 +169,15 @@ dfm.train.tfidf <- t(dfm.train.tfidf)
 dim(dfm.train.tfidf)
 view(dfm.train.tfidf[1:20,1:100])
 
-## check incomplete cases
+## check incomplete cases -- it is possible that with our preprocessing some dish 
+## have name that being removed
 incomplete.cases <- which(!complete.cases(dfm.train.tfidf))
 train$translatedText[incomplete.cases]
 
 ## fix it
 dfm.train.tfidf[incomplete.cases,] <- rep(0.0, ncol(dfm.train.tfidf))
 
-###### end of tf-idf ########
+################ end of tf-idf ##################
 
 
 ########## Singular value decomposition ##########
@@ -198,6 +199,8 @@ u.transpose <- t(train.irlba$u)
 ##setup feature dataframe with label
 train.svd <- data.frame(label=as.factor(train$seafood_yn), train.irlba$v)
 dim(train.svd)
+
+################# end of SVD ###################################
 ```
 
 # make models use only names 
