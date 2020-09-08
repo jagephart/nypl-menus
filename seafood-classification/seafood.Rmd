@@ -13,6 +13,7 @@ library(quanteda)
 library(doSNOW) #run model to run in each core
 library(cld3)
 library(googleLanguageR)
+library(irlba)
 ```
 
 # Preprocessing
@@ -58,11 +59,13 @@ df.name.translate.bind <- do.call(rbind, df.name.translate)
 prop.table(table(df.name.translate.bind$detectedSourceLanguage))
 
 write.csv(df.name.translate.bind,"NameTranslated.csv")
+df.name.translate.bind <- read_csv("NameTranslated.csv")
 
 ##use translated as our dataset
 df.labeled <- cbind(df.labeled, df.name.translate.bind)
 df.labeled <- df.labeled %>%
-  select(-text)
+  select(-text) %>%
+  select(-X1)
 head(df.labeled)
 
 
@@ -86,7 +89,7 @@ df.labeled.cld3 %>%
   ggplot(aes(lang,prop)) + geom_col() +
   theme_bw() + labs(title = "top 5 language by cld3")
 
-
+head(df.labeled)
 ```
 
 # create training and test
@@ -126,15 +129,80 @@ dfm.train <- dfm(corpus,
 
 view(dfm.train[1:20,1:100])
 
+############## make TF-IDF version of data
+## make tf function
+term.frequency <- function(row){
+  row/sum(row)
+}
+
+## make function to calculate IDF
+inverse.doc.freq <- function(col) {
+  corpus.size <- length(col)
+  doc.count <- length(which(col>0))
+  log10(corpus.size/doc.count)
+}
+
+## make function to calculate tf/idf
+
+tf.idf <- function(tf,idf) {
+  tf*idf
+}
+
+## make tf matrix transformation 
+dfm.train.tf <- apply(dfm.train, 1, term.frequency)
+dim(dfm.train)
+
+## make idf 
+dfm.train.idf <- apply(dfm.train, 2, inverse.doc.freq)
+
+## make tf-idf matrix 
+dfm.train.tfidf <- apply(dfm.train.tf, 2, tf.idf, idf = dfm.train.idf)
+dim(dfm.train.tfidf)
+
+## transpose t-idf matrix
+dfm.train.tfidf <- t(dfm.train.tfidf)
+dim(dfm.train.tfidf)
+view(dfm.train.tfidf[1:20,1:100])
+
+## check incomplete cases
+incomplete.cases <- which(!complete.cases(dfm.train.tfidf))
+train$translatedText[incomplete.cases]
+
+## fix it
+dfm.train.tfidf[incomplete.cases,] <- rep(0.0, ncol(dfm.train.tfidf))
+
+###### end of tf-idf ########
+
+
+########## Singular value decomposition ##########
+
+## record start time
+start.time <- Sys.time()
+
+### perform SVD to decrease dimentionality  to 300 using package irlba
+train.irlba <- irlba(t(dfm.train.tfidf), nv = 300, maxit = 600)
+
+## total time
+total.time <- Sys.time() - start.time
+
 ##setup feature dataframe with label
-train.token <- cbind(label=as.factor(train$seafood_yn), convert(dfm.train[,-1], to = "data.frame"))
+train.svd <- cbind(label=as.factor(train$seafood_yn), convert(dfm.train.tfidf, to = "data.frame"))
 
 ## Make syntactically valid column names out of character vectors.
 names(train.token) <- make.names(names(train.token))
+train.token <- train.token[-2]
+
+## save train dataset for future use
+save(train.token, file = "train.token.Rdata")
+
 ```
 
-# make models use only names - Error: protect(): protection stack overflow
+# make models use only names 
+## use R default setting - Error: protect(): protection stack overflow 
+## - try to tweak default R setting: Error: vector memory exhausted (limit reached?)
+## solution to try: 1. use feature selection to decrease variable 2. use GPU Cloud? 
 ```{r}
+load("train.token.Rdata")
 set.seed(1234)
 # use caret package to make stratified 10-fold cross validation repeated
 
@@ -145,16 +213,15 @@ cv.control <- trainControl(method = "repeatedcv", number = 10,
 # time the code execution
 start.time <- Sys.time()
 
-#create cluster to work on 3 cores using doSNOW package to cut time execution
+#create cluster to work on 2 cores using doSNOW package to cut time execution
 cl <- makeCluster(2, type="SOCK")
 registerDoSNOW(cl)
 
 # build decision tree - rpart
 rpart.cv.1 <- train(label~.,data = train.token, 
-                    method = "rpart",
-                    trcontrol = cv.control,
-                    tuneLength = 7)
-
+                    method = "rf",
+                    # trcontrol = cv.control,
+                    tuneLength = 3)
 # when processing is done, stop cluster
 stopCluster(cl)
 
