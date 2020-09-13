@@ -47,18 +47,19 @@ estimated.cost <- sum(df.labeled.count$text.length)/500000*20 #for labeled data 
 
 ```{r}
 
-## use google API
-gl_auth("seafood-translation-f329aa685c7f.json")
-df.name.translate <- vector(mode = "list", length = nrow(df.labeled))
-
-for (i in seq_along(df.name.translate)) {
-     df.name.translate[[i]] <- gl_translate(df.labeled$name[i], target = "en")
-}
-
-df.name.translate.bind <- do.call(rbind, df.name.translate)
-prop.table(table(df.name.translate.bind$detectedSourceLanguage))
-
-write.csv(df.name.translate.bind,"NameTranslated.csv")
+###################### use google API #########################
+## the output file is saved in .csv because it is costly and time consuming to run it everytime
+# gl_auth("seafood-translation-f329aa685c7f.json")
+# df.name.translate <- vector(mode = "list", length = nrow(df.labeled))
+# 
+# for (i in seq_along(df.name.translate)) {
+#      df.name.translate[[i]] <- gl_translate(df.labeled$name[i], target = "en")
+# }
+# 
+# df.name.translate.bind <- do.call(rbind, df.name.translate)
+# prop.table(table(df.name.translate.bind$detectedSourceLanguage))
+# 
+# write.csv(df.name.translate.bind,"NameTranslated.csv")
 df.name.translate.bind <- read_csv("NameTranslated.csv")
 
 ##use translated as our dataset
@@ -130,10 +131,6 @@ dfm.train <- dfm(corpus,
 
 view(dfm.train[1:20,1:100])
 
-## Make syntactically valid column names out of character vectors.
-names(train.token) <- make.names(names(train.token))
-train.token <- train.token[-2]
-
 ############## make TF-IDF version of data ##################
 ## make tf function
 term.frequency <- function(row){
@@ -200,10 +197,128 @@ u.transpose <- t(train.irlba$u)
 train.svd <- data.frame(label=as.factor(train$seafood_yn), train.irlba$v)
 dim(train.svd)
 
+save(train.svd,file = "trainingsvd.Rdata")
+load("trainingsvd.Rdata")
+
 ################# end of SVD ###################################
 ```
 
-# make models use only names 
+## preprocessing test
+```{r}
+#create a corpus
+corpus <- corpus(test$translatedText) 
+
+
+#create document frequency matrix in a go
+dfm.test <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+
+view(dfm.test[1:20,1:100])
+
+### convert test data set to have the samee dimension as training data ##
+dfm.test <- dfm_select(dfm.test, pattern = dfm.train)
+dfm.test.matrix <- as.matrix(dfm.test)
+dim(dfm.test)
+
+############## make TF-IDF version of data ##################
+
+## make tf matrix transformation 
+dfm.test.tf <- apply(dfm.test.matrix, 1, term.frequency)
+
+
+## make tf-idf matrix using idf from training data, 
+## because we expect that any new document that comes in the future has to
+## correspondent with our main corpus (training data)
+dfm.test.tfidf <- apply(dfm.test.tf, 2, tf.idf, idf = dfm.train.idf)
+dim(dfm.test.tfidf)
+
+## transpose t-idf matrix
+dfm.test.tfidf <- t(dfm.test.tfidf)
+dim(dfm.test.tfidf)
+view(dfm.train.tfidf[1:20,1:100])
+
+## check incomplete cases -- it is possible that with our preprocessing some dish 
+## have name that being removed
+incomplete.cases <- which(!complete.cases(dfm.test.tfidf))
+
+## fix it
+dfm.test.tfidf[incomplete.cases,] <- rep(0.0, ncol(dfm.test.tfidf))
+
+################ end of tf-idf ##################
+
+
+########## Singular value decomposition ##########
+
+test.svd <- t(sigma.inverse*u.transpose %*% t(dfm.test.tfidf))
+
+##setup feature dataframe with label
+test.svd <- data.frame(label=as.factor(test$seafood_yn), test.svd)
+dim(test.svd)
+
+save(test.svd,file = "testsvd.Rdata")
+
+################# end of SVD ###################################
+```
+
+
+## use KNN (simplest classification I know, to boost processing time)
+
+```{r}
+set.seed(1234)
+# use caret package to make stratified 10-fold cross validation repeated
+
+cv.folds <- createMultiFolds(train.svd$label, k = 10, times = 2)
+cv.control <- trainControl(method = "repeatedcv", number = 10,
+                           repeats = 2, index = cv.folds)
+
+# time the code execution
+start.time <- Sys.time()
+
+knnFit <- train(label ~ ., data = train.svd, 
+                method = "knn", 
+                trControl = cv.control, 
+                preProcess = c("center","scale"), 
+                tuneLength = 10)
+
+total.time <- Sys.time() - start.time
+
+total.time
+## save(knnFit,file = "knnFit.Rdata")
+knnFit
+plot(knnFit)
+
+##################### predict with test ##################
+# time the code execution
+start.time <- Sys.time()
+# predict
+knnpredict <- predict(knnFit, newdata = test.svd )
+
+total.time.predict <- Sys.time() - start.time
+
+confusionMatrix(knnpredict, test.svd$label )
+
+test.result <- data.frame( predicted = knnpredict, test)
+test.result %>%
+  select(predicted, name, seafood_yn) %>%
+  filter (!predicted == seafood_yn,
+          seafood_yn == 0)
+
+## the result has a relatively high accuracy but low specitifity
+```
+
+
+
+
+
+
+# make models use random forest 
 ## use R default setting - Error: protect(): protection stack overflow 
 ## - try to tweak default R setting: Error: vector memory exhausted (limit reached?)
 ## solution to try: 1. use feature selection to decrease variable 2. use GPU Cloud? 
@@ -218,17 +333,11 @@ cv.control <- trainControl(method = "repeatedcv", number = 10,
 # time the code execution
 start.time <- Sys.time()
 
-#create cluster to work on 2 cores using doSNOW package to cut time execution
-cl <- makeCluster(2, type="SOCK")
-registerDoSNOW(cl)
-
 # build decision tree - rpart
 rpart.cv.1 <- train(label~.,data = train.svd, 
                     method = "rf",
                     trcontrol = cv.control,
-                    tuneLength = 3)
-# when processing is done, stop cluster
-stopCluster(cl)
+                    tuneLength = 5)
 
 total.time <- Sys.time() - start.time
 ```
