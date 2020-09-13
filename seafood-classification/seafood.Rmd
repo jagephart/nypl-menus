@@ -267,7 +267,6 @@ save(test.svd,file = "testsvd.Rdata")
 ################# end of SVD ###################################
 ```
 
-
 ## use KNN (simplest classification I know, to boost processing time)
 
 ```{r}
@@ -342,10 +341,78 @@ test.result %>%
 #    Detection Prevalence : 0.8834          
 #       Balanced Accuracy : 0.9104          
 #                                           
-#        'Positive' Class : 0               
+#        'Positive' Class : 0   
+
+## the result has a slightly less accuracy -96 percent-, but higher specitifity(positive class is0)
 
 ```
 
+
+## use logistic regression (less memory demand than random forest, to boost processing time)
+
+```{r}
+set.seed(1234)
+# use caret package to make stratified 10-fold cross validation repeated
+
+cv.folds <- createMultiFolds(train.svd$label, k = 10, times = 2)
+cv.control <- trainControl(method = "repeatedcv", number = 10,
+                           repeats = 2, index = cv.folds)
+
+# time the code execution
+start.time <- Sys.time()
+
+logFit <- train(label ~ ., data = train.svd, 
+                method = "glm", 
+                family=binomial(),
+                trControl = cv.control, 
+                tuneLength = 10)
+
+total.time.train.log <- Sys.time() - start.time
+
+
+## Took about 11 min to train the model
+total.time
+save(logFit,file = "logFit.Rdata")
+
+
+##################### predict with test ##################
+# time the code execution
+start.time <- Sys.time()
+# predict
+logpredict <- predict(logFit, newdata = test.svd )
+
+total.time.predict.log <- Sys.time() - start.time
+
+confusionMatrix(logpredict, test.svd$label )
+
+# Confusion Matrix and Statistics
+# 
+#           Reference
+# Prediction    0    1
+#          0 7300  156
+#          1  244  902
+#                                           
+#                Accuracy : 0.9535          
+#                  95% CI : (0.9488, 0.9579)
+#     No Information Rate : 0.877           
+#     P-Value [Acc > NIR] : < 2.2e-16       
+#                                           
+#                   Kappa : 0.7919          
+#                                           
+#  Mcnemar's Test P-Value : 1.361e-05       
+#                                           
+#             Sensitivity : 0.9677          
+#             Specificity : 0.8526          
+#          Pos Pred Value : 0.9791          
+#          Neg Pred Value : 0.7871          
+#              Prevalence : 0.8770          
+#          Detection Rate : 0.8486          
+#    Detection Prevalence : 0.8668          
+#       Balanced Accuracy : 0.9101          
+#                                           
+#        'Positive' Class : 0
+
+```
 
 # make models use random forest 
 ## use R default setting - Error: protect(): protection stack overflow 
@@ -373,5 +440,3 @@ rpart.cv.1 <- train(label~.,data = train.svd,
 
 total.time <- Sys.time() - start.time
 ```
-
-
