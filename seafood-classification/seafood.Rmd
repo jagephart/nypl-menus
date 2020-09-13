@@ -289,6 +289,8 @@ knnFit <- train(label ~ ., data = train.svd,
 
 total.time <- Sys.time() - start.time
 
+
+## Took about 3 hours to train the model
 total.time
 ## save(knnFit,file = "knnFit.Rdata")
 knnFit
@@ -308,14 +310,41 @@ test.result <- data.frame( predicted = knnpredict, test)
 test.result %>%
   select(predicted, name, seafood_yn) %>%
   filter (!predicted == seafood_yn,
-          seafood_yn == 0)
+          seafood_yn == 1)
 
-## the result has a relatively high accuracy but low specitifity
+## the result has a relatively high accuracy -96 percent-, but low specitifity(positive class is0)
+## probably the model could perform better if somehow we can help the machine to understand 
+## more about context, that oyster and lobster is a seafood. or use model that will fit data better
+## for example decision tree/ random forest
+
+# Confusion Matrix and Statistics
+# 
+#           Reference
+# Prediction    0    1
+#          0 7426  173
+#          1  118  885
+#                                           
+#                Accuracy : 0.9662          
+#                  95% CI : (0.9621, 0.9699)
+#     No Information Rate : 0.877           
+#     P-Value [Acc > NIR] : < 2.2e-16       
+#                                           
+#                   Kappa : 0.8396          
+#                                           
+#  Mcnemar's Test P-Value : 0.001548        
+#                                           
+#             Sensitivity : 0.9844          
+#             Specificity : 0.8365          
+#          Pos Pred Value : 0.9772          
+#          Neg Pred Value : 0.8824          
+#              Prevalence : 0.8770          
+#          Detection Rate : 0.8633          
+#    Detection Prevalence : 0.8834          
+#       Balanced Accuracy : 0.9104          
+#                                           
+#        'Positive' Class : 0               
+
 ```
-
-
-
-
 
 
 # make models use random forest 
@@ -325,6 +354,9 @@ test.result %>%
 ```{r}
 set.seed(1234)
 # use caret package to make stratified 10-fold cross validation repeated
+index.25.percent <- sample(nrow(train), 0.25*nrow(train))
+
+
 
 cv.folds <- createMultiFolds(train$seafood_yn, k = 10, times = 1)
 cv.control <- trainControl(method = "repeatedcv", number = 10,
