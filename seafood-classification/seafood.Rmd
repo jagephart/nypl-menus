@@ -22,30 +22,48 @@ library(irlba)
 #load dataset
 df <- read_csv("/Users/alannurcahyo/Documents/Documents/AU/fall2020/DATA/Seafood_Dishes.csv")
 unique(df$seafood_yn) ##check label
-df.labeled <- df%>%
-  select(-description) %>%
+head(df)
+df.labeled <- df %>%
   filter(seafood_yn %in% c(0,1))
 
 prop.table(table(df.labeled$seafood_yn))
 ```
+distribution of labeled and non labeled by Year
+```{r}
+unique(df$last_appeared)
+df %>%
+  filter(first_appeared != 0,
+         first_appeared != 1,
+         first_appeared != 2928) %>%
+  mutate( seafoodTF = !is.na(seafood_yn)) %>%
+  group_by(first_appeared, seafoodTF) %>%
+  count() %>%
+  spread(seafoodTF, n) %>%
+  arrange(desc(first_appeared))
+
+df %>%
+  filter(first_appeared != 0,
+         first_appeared != 1,
+         first_appeared != 2928) %>%
+  mutate( seafoonTF = !is.na(seafood_yn)) %>%
+  ggplot(aes(first_appeared, fill = seafoonTF)) + 
+  geom_histogram(binwidth = 10)
+
+df %>%
+  filter(last_appeared != 0,
+         last_appeared != 1,
+         last_appeared != 2928) %>%
+  mutate( seafoonTF = !is.na(seafood_yn)) %>%
+  ggplot(aes(last_appeared, fill = seafoonTF)) + 
+  geom_histogram(binwidth = 10)
+```
 
 Translate
 ```{r}
-#detect langauage -- cld3 
+############### detect langauage use cld3 #################### 
 df.labeled.cld3 <- df.labeled%>%
   mutate(name = str_to_lower(name),
          lang = cld3::detect_language(name))
-df.labeled.cld3 %>%
-  filter(lang == "en")
-
-# estimate cost we use Google API?
-df.labeled.count <- df.labeled%>%
-  mutate(text.length = nchar(name))
-estimated.cost <- sum(df.labeled.count$text.length)/500000*20 #for labeled data only, per call
-```
-
-
-```{r}
 
 ###################### use google API #########################
 ## the output file is saved in .csv because it is costly and time consuming to run it everytime
@@ -65,8 +83,7 @@ df.name.translate.bind <- read_csv("NameTranslated.csv")
 ##use translated as our dataset
 df.labeled <- cbind(df.labeled, df.name.translate.bind)
 df.labeled <- df.labeled %>%
-  select(-text) %>%
-  select(-X1)
+  dplyr::select(-text , -X1, -description)
 head(df.labeled)
 
 
@@ -109,16 +126,31 @@ test <- df.labeled[-index,]
 ##verify
 prop.table(table(train$seafood_yn))
 prop.table(table(test$seafood_yn))
+
 ```
 
 
 ## preprocess training set
 ```{r}
+library(udpipe)
+dl <- udpipe_download_model(language = "english")
+udmodel<- udpipe_load_model(file = dl$file_model)
+annotate <- udpipe_annotate(udmodel, train$translatedText)
+annotate <- as.data.frame(annotate)
+table(annotate$upos)
+all.verb.train <- annotate %>%
+  filter(upos == "VERB") %>%
+  dplyr::select(token)
+all.verb.train <- all.verb.train[1:nrow(all.verb.train),]
+all.verb.train <- unique(all.verb.train)
+
+```
+
+```{r}
 #create a corpus
 corpus <- corpus(train$translatedText) 
 
-
-#create document frequency matrix in a go
+#create document frequency matrix with verb
 dfm.train <- dfm(corpus, 
              tolower=TRUE,  
              remove_punct =TRUE, 
@@ -130,6 +162,21 @@ dfm.train <- dfm(corpus,
              verbose=TRUE)
 
 view(dfm.train[1:20,1:100])
+dim(dfm.train)
+
+#create document frequency matrix without verb
+dfm.train <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove = c(all.verb.train, stopwords('english', source = "snowball")),
+             stem=TRUE, 
+             verbose=TRUE)
+
+view(dfm.train[1:20,1:100])
+dim(dfm.train)
 
 ############## make TF-IDF version of data ##################
 ## make tf function
@@ -292,6 +339,7 @@ total.time <- Sys.time() - start.time
 ## Took about 3 hours to train the model
 total.time
 ## save(knnFit,file = "knnFit.Rdata")
+load("knnFit.Rdata")
 knnFit
 plot(knnFit)
 
@@ -351,12 +399,12 @@ test.result %>%
 ## use logistic regression (less memory demand than random forest, to boost processing time)
 
 ```{r}
+
+train.noverb <- data.frame(label=as.factor(train$seafood_yn), dfm.train)
+test.svd <- data.frame(label=as.factor(test$seafood_yn), test.svd)
+
 set.seed(1234)
 # use caret package to make stratified 10-fold cross validation repeated
-
-cv.folds <- createMultiFolds(train.svd$label, k = 10, times = 2)
-cv.control <- trainControl(method = "repeatedcv", number = 10,
-                           repeats = 2, index = cv.folds)
 
 # time the code execution
 start.time <- Sys.time()
@@ -414,29 +462,76 @@ confusionMatrix(logpredict, test.svd$label )
 
 ```
 
-# make models use random forest 
-## use R default setting - Error: protect(): protection stack overflow 
-## - try to tweak default R setting: Error: vector memory exhausted (limit reached?)
-## solution to try: 1. use feature selection to decrease variable 2. use GPU Cloud? 
+# try to use original high dimention data with log regression
 ```{r}
+train.tfidf <- data.frame(label = as.factor(train$seafood_yn), dfm.train.tfidf)
+test.tfidf <- data.frame(label = as.factor(test$seafood_yn), dfm.test.tfidf)
+
 set.seed(1234)
 # use caret package to make stratified 10-fold cross validation repeated
-index.25.percent <- sample(nrow(train), 0.25*nrow(train))
+# use caret package to make stratified 10-fold cross validation repeated
 
-
-
-cv.folds <- createMultiFolds(train$seafood_yn, k = 10, times = 1)
+cv.folds <- createMultiFolds(train.tfidf$label, k = 10, times = 2)
 cv.control <- trainControl(method = "repeatedcv", number = 10,
-                           repeats = 1, index = cv.folds)
+                           repeats = 2, index = cv.folds)
 
 # time the code execution
 start.time <- Sys.time()
 
-# build decision tree - rpart
-rpart.cv.1 <- train(label~.,data = train.svd, 
-                    method = "rf",
-                    trcontrol = cv.control,
-                    tuneLength = 5)
+allvar.logFit <- train(label ~ ., data = train.tfidf, 
+                method = "glm", 
+                family=binomial(),
+                trControl = cv.control, 
+                tuneLength = 10)
 
-total.time <- Sys.time() - start.time
+total.time.train.log.allvar <- Sys.time() - start.time
+
+
+## Took o train the model
+total.time
+save(allvar.logFit,file = "allvar.logFit.Rdata")
+
+
+##################### predict with test ##################
+# time the code execution
+start.time <- Sys.time()
+# predict
+allvar.logFit <- predict(allvar.logFit, newdata = test.tfidf )
+
+total.time.predict.log.allvar <- Sys.time() - start.time
+
+confusionMatrix(allvar.logFit, test.tfidf$label )
+```
+
+# make models use random forest 
+## use R default setting - Error: protect(): protection stack overflow 
+## - try to tweak default R setting: Error: vector memory exhausted (limit reached?)
+## solution to try: use machine with bigger memory
+```{r}
+# set.seed(1234)
+# 
+# cv.folds <- createMultiFolds(train$seafood_yn, k = 10, times = 1)
+# cv.control <- trainControl(method = "repeatedcv", number = 10,
+#                            repeats = 1, index = cv.folds)
+# 
+# cl <- DoSNOW::makeCluster(20)
+# registerDoSNOW(cl)
+# 
+# # time the code execution
+# start.time <- Sys.time()
+# 
+# # build decision tree - rpart
+# rpart.cv.1 <- train(label~.,data = train.svd, 
+#                     method = "rf",
+#                     trcontrol = cv.control,
+#                     tuneLength = 10)
+# 
+# total.time <- Sys.time() - start.time
+# 
+# DoSNOW::stopCluster(cl)
+load("trainingrf.Rdata")
+rf.cv.1
+# rfpredict <- predict(rf.cv.1, newdata = test.svd)
+load("rfpredict.rdata")
+confusionMatrix(rfpredict, test.svd$label)
 ```
