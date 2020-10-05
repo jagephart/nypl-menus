@@ -93,8 +93,11 @@ for (i in seq_along(new_sample)) {
 new_sample <- do.call(rbind, new_sample)
 
 # write it to csv
-write_csv(new_sample,"new_sample.csv")
-
+# write_csv(new_sample,"new_sample.csv")
+# label it manually, then load the labeled new sample into R
+new_sample_labeled <- read_csv("new_sample_labeled.csv")
+new_sample_labeled <- new_sample_labeled %>%
+  filter(seafood_yn %in% c(0,1))
 ```
 
 Translate
@@ -118,12 +121,49 @@ df.labeled.cld3 <- df.labeled%>%
 # 
 # write.csv(df.name.translate.bind,"NameTranslated.csv")
 df.name.translate.bind <- read_csv("NameTranslated.csv")
-
+# 
+# # translate new_sample_labeled
+# gl_auth("seafood-translation-2ae5d5055080.json")
+# df.name.translate.newsample <- vector(mode = "list", length = nrow(new_sample_labeled))
+# #
+# for (i in seq_along(df.name.translate.newsample)) {
+#       df.name.translate.newsample[[i]] <- gl_translate(new_sample_labeled$name[i], target = "en")
+# }
+# 
+#  df.name.translate.newsample <- do.call(rbind, df.name.translate.newsample)
+df.name.translate.newsample <- read_csv("new_sample_translated.csv")
+ 
 ##use translated as our dataset
 df.labeled <- cbind(df.labeled, df.name.translate.bind)
 df.labeled <- df.labeled %>%
   dplyr::select(-text , -X1, -description)
-head(df.labeled)
+## for new sample
+new_sample_labeled <- cbind(new_sample_labeled, df.name.translate.newsample)
+new_sample_labeled <- new_sample_labeled %>%
+  dplyr::select(-text, -description)
+
+## bind with new labeled dataset
+df.labeled <- rbind(df.labeled, new_sample_labeled)
+
+## check distribution
+#Histogram of first time the menu appeared
+df.labeled %>%
+  filter(first_appeared != 0,
+         first_appeared != 1,
+         first_appeared != 2928) %>%
+  mutate( seafoonTF = !is.na(seafood_yn)) %>%
+  ggplot(aes(first_appeared, fill = seafoonTF)) + 
+  geom_histogram(binwidth = 10)
+
+# comparison between labeled and unlabeled data by first appeared
+count.first.appeared <- df.labeled %>%
+  filter(first_appeared != 0,
+         first_appeared != 1,
+         first_appeared != 2928) %>%
+  mutate( seafoodTF = !is.na(seafood_yn)) %>%
+  group_by(first_appeared, seafoodTF) %>%
+  count() %>%
+  spread(seafoodTF, n)
 
 
 ## Comparation between cld3 and GoogleAPI  -- googleAPI is outperform cld3 in language detection
@@ -146,7 +186,14 @@ df.labeled.cld3 %>%
   ggplot(aes(lang,prop)) + geom_col() +
   theme_bw() + labs(title = "top 5 language by cld3")
 
-head(df.labeled)
+
+
+### adding new variable to df.labeled to improve model performance
+popularseafoodwords <- c("oyster", "Oyster", "crab","Crab", "clam", "Clam","lobster","Lobster")
+popularseafoodwords <- paste(popularseafoodwords,collapse = "|")
+df.labeled <- df.labeled %>%
+  mutate(popseafood = ifelse(str_detect(translatedText,popularseafoodwords),1,0),
+         digit4 = ifelse(str_detect(translatedText,"[:digit:]{4}"),1,0))
 ```
 
 # create training and test
@@ -171,6 +218,8 @@ prop.table(table(test$seafood_yn))
 
 ## preprocess training set
 ```{r}
+## annotate dish name
+
 library(udpipe)
 dl <- udpipe_download_model(language = "english")
 udmodel<- udpipe_load_model(file = dl$file_model)
@@ -279,12 +328,15 @@ sigma.inverse <- 1/train.irlba$d
 u.transpose <- t(train.irlba$u)
 
 ##setup feature dataframe with label
-train.svd <- data.frame(label=as.factor(train$seafood_yn), train.irlba$v)
+train.svd <- data.frame(label=as.factor(train$seafood_yn), 
+                        popseafood = train$popseafood, 
+                        digit4 = train$digit4,
+                        train.irlba$v)
 dim(train.svd)
 
 save(train.svd,file = "trainingsvd.Rdata")
 load("trainingsvd.Rdata")
-
+head(train.svd)
 ################# end of SVD ###################################
 ```
 
@@ -304,8 +356,6 @@ dfm.test <- dfm(corpus,
              remove=stopwords('english', source = "snowball"), 
              stem=TRUE, 
              verbose=TRUE)
-
-view(dfm.test[1:20,1:100])
 
 ### convert test data set to have the samee dimension as training data ##
 dfm.test <- dfm_select(dfm.test, pattern = dfm.train)
@@ -327,7 +377,6 @@ dim(dfm.test.tfidf)
 ## transpose t-idf matrix
 dfm.test.tfidf <- t(dfm.test.tfidf)
 dim(dfm.test.tfidf)
-view(dfm.train.tfidf[1:20,1:100])
 
 ## check incomplete cases -- it is possible that with our preprocessing some dish 
 ## have name that being removed
@@ -344,10 +393,15 @@ dfm.test.tfidf[incomplete.cases,] <- rep(0.0, ncol(dfm.test.tfidf))
 test.svd <- t(sigma.inverse*u.transpose %*% t(dfm.test.tfidf))
 
 ##setup feature dataframe with label
-test.svd <- data.frame(label=as.factor(test$seafood_yn), test.svd)
+test.svd <- data.frame(label=as.factor(test$seafood_yn), 
+                       popseafood = test$popseafood, 
+                       digit4 = test$digit4, 
+                       test.svd)
 dim(test.svd)
 
 save(test.svd,file = "testsvd.Rdata")
+
+system("say just finished")
 
 ################# end of SVD ###################################
 ```
@@ -355,145 +409,97 @@ save(test.svd,file = "testsvd.Rdata")
 ## use KNN (simplest classification I know, to boost processing time)
 
 ```{r}
-set.seed(1234)
+######### knn #########################
+
+# KNN is a non-parameteric classification method where in order to predict a response class
+# we use the value of k-nearest neighbour in the data set. k indicate the number of neighbour we want to 
+# use in the model. The distance between neighbour is determined using Euclidean Distance
+
+
+################# use 10-fold cv ######################
 # use caret package to make stratified 10-fold cross validation repeated
-
-cv.folds <- createMultiFolds(train.svd$label, k = 10, times = 2)
-cv.control <- trainControl(method = "repeatedcv", number = 10,
-                           repeats = 2, index = cv.folds)
-
-# time the code execution
-start.time <- Sys.time()
-
-knnFit <- train(label ~ ., data = train.svd, 
-                method = "knn", 
-                trControl = cv.control, 
-                preProcess = c("center","scale"), 
-                tuneLength = 10)
-
-total.time <- Sys.time() - start.time
-
-
-## Took about 3 hours to train the model
-total.time
-## save(knnFit,file = "knnFit.Rdata")
-load("knnFit.Rdata")
-knnFit
-plot(knnFit)
-
-##################### predict with test ##################
-# time the code execution
-start.time <- Sys.time()
-# predict
-knnpredict <- predict(knnFit, newdata = test.svd )
-
-total.time.predict <- Sys.time() - start.time
-
-confusionMatrix(knnpredict, test.svd$label )
-
-test.result <- data.frame( predicted = knnpredict, test)
-test.result %>%
-  select(predicted, name, seafood_yn) %>%
-  filter (!predicted == seafood_yn,
-          seafood_yn == 1)
-
-## the result has a relatively high accuracy -96 percent-, but low specitifity(positive class is0)
-## probably the model could perform better if somehow we can help the machine to understand 
-## more about context, that oyster and lobster is a seafood. or use model that will fit data better
-## for example decision tree/ random forest
-
-# Confusion Matrix and Statistics
+# # create index to 10-fold cv, use ROC as a model selection criteria
+# cv.control <- trainControl(method = "cv", number = 10, 
+#                            summaryFunction = twoClassSummary,
+#                            classProbs = TRUE)
 # 
-#           Reference
-# Prediction    0    1
-#          0 7426  173
-#          1  118  885
-#                                           
-#                Accuracy : 0.9662          
-#                  95% CI : (0.9621, 0.9699)
-#     No Information Rate : 0.877           
-#     P-Value [Acc > NIR] : < 2.2e-16       
-#                                           
-#                   Kappa : 0.8396          
-#                                           
-#  Mcnemar's Test P-Value : 0.001548        
-#                                           
-#             Sensitivity : 0.9844          
-#             Specificity : 0.8365          
-#          Pos Pred Value : 0.9772          
-#          Neg Pred Value : 0.8824          
-#              Prevalence : 0.8770          
-#          Detection Rate : 0.8633          
-#    Detection Prevalence : 0.8834          
-#       Balanced Accuracy : 0.9104          
-#                                           
-#        'Positive' Class : 0   
+# # time the code execution
+# start.time <- Sys.time()
+# 
+# # knnFit <- train(label ~ ., data = train.svd, 
+# #                 method = "knn", 
+# #                 trControl = cv.control, 
+# #                 preProcess = c("center","scale"), 
+# #                 tuneLength = 10)
+# 
+# total.time <- Sys.time() - start.time
+## Took about 3 hours to train the model
+# ## save(knnFit,file = "knnFit.Rdata")
+# load("knnFit.Rdata")
+# knnFit
+# plot(knnFit)
 
-## the result has a slightly less accuracy -96 percent-, but higher specitifity(positive class is0)
+##################### using simple test and training ##################
 
+knn.result <- vector(mode = "list",length=5)
+tune.knn <- c(3,5,25,50,75)
+library(class)
+
+set.seed(1234)
+for (i in seq_along(tune.knn)) {
+  knn.result[[i]] <- knn(train.svd,test.svd,train.svd$label, tune.knn[i])
+}
+
+## create a function to determine best model
+best.accuracy <- function(result) {
+  accuracy <- 1:length(result)
+  n.test <- nrow(test.svd)
+  for (i in seq_along(result)) {
+    accuracy[[i]] <- sum(test.svd$label == result[[i]] )/n.test 
+  }
+  CPR <- max(accuracy)
+  k <- which.max(accuracy)
+  conf.matrix <- confusionMatrix(as.factor(result[[k]]),test.svd$label)
+  best.model <- list(max_correct_predicted_rate =CPR,
+                     best_thershold = k,
+                     best_confusion.matric = conf.matrix)
+  return(best.model)
+}
+
+best.accuracy()
+
+system("say just finished")
 ```
 
 
-## use logistic regression (less memory demand than random forest, to boost processing time)
+## use logistic regression with svd
 
 ```{r}
-set.seed(1234)
-# use caret package to make stratified 10-fold cross validation repeated
+#using simple test and training, we previously use cross validation but ends up too long
 
 # time the code execution
 start.time <- Sys.time()
 
-logFit <- train(label ~ ., data = train.svd, 
-                method = "glm", 
-                family=binomial(),
-                trControl = cv.control, 
-                tuneLength = 10)
+logfit <- glm(label ~ ., data = train.svd, family=binomial)
 
 total.time.train.log <- Sys.time() - start.time
 
-
-## Took about 11 min to train the model
-total.time
-save(logFit,file = "logFit.Rdata")
-
+## Took less than a minute to return a model
+total.time.train.log
 
 ##################### predict with test ##################
-# time the code execution
-start.time <- Sys.time()
 # predict
-logpredict <- predict(logFit, newdata = test.svd )
+logpredict <- predict(logfit, newdata = test.svd,  type = "response")
+log.result <- vector(mode = "list",length=100)
 
-total.time.predict.log <- Sys.time() - start.time
+## generate list with different threshold
+for (i in 1:100) {
+  log.result[[i]] <- 1*(logpredict > i/100 )
+}
 
-confusionMatrix(logpredict, test.svd$label )
-
-# Confusion Matrix and Statistics
-# 
-#           Reference
-# Prediction    0    1
-#          0 7300  156
-#          1  244  902
-#                                           
-#                Accuracy : 0.9535          
-#                  95% CI : (0.9488, 0.9579)
-#     No Information Rate : 0.877           
-#     P-Value [Acc > NIR] : < 2.2e-16       
-#                                           
-#                   Kappa : 0.7919          
-#                                           
-#  Mcnemar's Test P-Value : 1.361e-05       
-#                                           
-#             Sensitivity : 0.9677          
-#             Specificity : 0.8526          
-#          Pos Pred Value : 0.9791          
-#          Neg Pred Value : 0.7871          
-#              Prevalence : 0.8770          
-#          Detection Rate : 0.8486          
-#    Detection Prevalence : 0.8668          
-#       Balanced Accuracy : 0.9101          
-#                                           
-#        'Positive' Class : 0
-
+## determine best model
+best.accuracy(log.result)
+system("say just finished")
 ```
 
 # try to use original high dimention data with log regression
