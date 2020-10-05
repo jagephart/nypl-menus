@@ -14,6 +14,7 @@ library(doSNOW) #run model to run in each core
 library(cld3)
 library(googleLanguageR)
 library(irlba)
+library(class)
 ```
 
 # Preprocessing
@@ -217,7 +218,10 @@ prop.table(table(test$seafood_yn))
 
 
 ## preprocess training set
+### preprocess training set using only noun as data frame
 ```{r}
+
+############## choosing only Noun ##############
 ## annotate dish name
 
 library(udpipe)
@@ -226,13 +230,36 @@ udmodel<- udpipe_load_model(file = dl$file_model)
 annotate <- udpipe_annotate(udmodel, train$translatedText)
 annotate <- as.data.frame(annotate)
 table(annotate$upos)
-all.verb.train <- annotate %>%
-  filter(upos == "VERB") %>%
+Noun <- annotate %>%
+  filter(upos == "NOUN") %>%
   dplyr::select(token)
-all.verb.train <- all.verb.train[1:nrow(all.verb.train),]
-all.verb.train <- unique(all.verb.train)
-```
+Noun <- Noun[1:nrow(Noun),]
+Noun <- unique(Noun)
 
+#create a corpus
+corpus <- corpus(train$translatedText) 
+
+#create document frequency matrix with verb
+dfm.train <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+dfm.train.Noun <- dfm_select(dfm.train, pattern = Noun)
+dim(dfm.train.Noun)
+
+##setup feature dataframe with label
+train.dfm <- data.frame(label=as.factor(train$seafood_yn), 
+                        popseafood = train$popseafood, 
+                        digit4 = train$digit4,
+                        dfm.train.Noun)
+
+```
+### preprocess training set using all words then convert it to 300 variable using svd
 ```{r}
 #create a corpus
 corpus <- corpus(train$translatedText) 
@@ -248,21 +275,6 @@ dfm.train <- dfm(corpus,
              stem=TRUE, 
              verbose=TRUE)
 
-view(dfm.train[1:20,1:100])
-dim(dfm.train)
-
-#create document frequency matrix without verb
-dfm.train <- dfm(corpus, 
-             tolower=TRUE,  
-             remove_punct =TRUE, 
-             remove_numbers=TRUE,
-             remove_symbols = TRUE,
-             remove_hyphens = TRUE,
-             remove = c(all.verb.train, stopwords('english', source = "snowball")),
-             stem=TRUE, 
-             verbose=TRUE)
-
-view(dfm.train[1:20,1:100])
 dim(dfm.train)
 
 ############## make TF-IDF version of data ##################
@@ -328,6 +340,7 @@ sigma.inverse <- 1/train.irlba$d
 u.transpose <- t(train.irlba$u)
 
 ##setup feature dataframe with label
+
 train.svd <- data.frame(label=as.factor(train$seafood_yn), 
                         popseafood = train$popseafood, 
                         digit4 = train$digit4,
@@ -341,6 +354,34 @@ head(train.svd)
 ```
 
 ## preprocessing test
+### preprocess test set using only noun as data frame
+```{r}
+
+############## choosing only Noun ##############
+#create a corpus
+corpus <- corpus(test$translatedText) 
+
+#create document frequency matrix with verb
+dfm.test <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+dfm.test.Noun <- dfm_select(dfm.test, pattern = dfm.train.Noun)
+dim(dfm.train.Noun)
+
+############### setup feature dataframe with label   #####################
+test.dfm <- data.frame(label=as.factor(test$seafood_yn), 
+                       popseafood = test$popseafood, 
+                       digit4 = test$digit4, 
+                       dfm.test.Noun) 
+```
+
+### preprocess test set using all words then convert it to 300 variable using svd
 ```{r}
 #create a corpus
 corpus <- corpus(test$translatedText) 
@@ -392,12 +433,12 @@ dfm.test.tfidf[incomplete.cases,] <- rep(0.0, ncol(dfm.test.tfidf))
 
 test.svd <- t(sigma.inverse*u.transpose %*% t(dfm.test.tfidf))
 
-##setup feature dataframe with label
+############### setup feature dataframe with label   #####################
 test.svd <- data.frame(label=as.factor(test$seafood_yn), 
                        popseafood = test$popseafood, 
                        digit4 = test$digit4, 
                        test.svd)
-dim(test.svd)
+dim(test.dfm)
 
 save(test.svd,file = "testsvd.Rdata")
 
@@ -406,7 +447,28 @@ system("say just finished")
 ################# end of SVD ###################################
 ```
 
-## use KNN (simplest classification I know, to boost processing time)
+## model performance evaluation
+```{r}
+## create a function to determine best model
+best.accuracy <- function(result, testdf) {
+  accuracy <- 1:length(result)
+  n.test <- nrow(testdf)
+  for (i in seq_along(result)) {
+    accuracy[[i]] <- sum(testdf$label == result[[i]] )/n.test 
+  }
+  CPR <- max(accuracy)
+  k <- which.max(accuracy)
+  conf.matrix <- confusionMatrix(as.factor(result[[k]]),testdf$label)
+  best.model <- list(max_correct_predicted_rate =CPR,
+                     best_thershold = k,
+                     best_confusion.matric = conf.matrix)
+  return(best.model)
+}
+```
+
+
+
+## use KNN
 
 ```{r}
 ######### knn #########################
@@ -441,42 +503,47 @@ system("say just finished")
 
 ##################### using simple test and training ##################
 
+################ using dfm version of data ###########
 knn.result <- vector(mode = "list",length=5)
-tune.knn <- c(3,5,25,50,75)
-library(class)
+tune.knn <- c(3,5,25,50,100)
 
 set.seed(1234)
 for (i in seq_along(tune.knn)) {
-  knn.result[[i]] <- knn(train.svd,test.svd,train.svd$label, tune.knn[i])
+  knn.result[[i]] <- knn(train.dfm,test.dfm,train.dfm$label, k = tune.knn[i])
 }
 
-## create a function to determine best model
-best.accuracy <- function(result) {
-  accuracy <- 1:length(result)
-  n.test <- nrow(test.svd)
-  for (i in seq_along(result)) {
-    accuracy[[i]] <- sum(test.svd$label == result[[i]] )/n.test 
-  }
-  CPR <- max(accuracy)
-  k <- which.max(accuracy)
-  conf.matrix <- confusionMatrix(as.factor(result[[k]]),test.svd$label)
-  best.model <- list(max_correct_predicted_rate =CPR,
-                     best_thershold = k,
-                     best_confusion.matric = conf.matrix)
-  return(best.model)
-}
 
-best.accuracy()
-
+best.accuracy(knn.result,testdf = test.svd)
 system("say just finished")
+
+
+
+########### ends of model using dfm version of data ##################
+
+
+################ using svd version of data ###########
+knn.result <- vector(mode = "list",length=5)
+tune.knn <- c(3,5,25,50,100)
+
+set.seed(1234)
+for (i in seq_along(tune.knn)) {
+  knn.result[[i]] <- knn(train.svd,test.svd,train.svd$label, k = tune.knn[i])
+}
+
+
+
+best.accuracy(knn.result,testdf = test.svd)
+system("say just finished")
+
+########### ends of model using svd version of data ##################
 ```
 
 
-## use logistic regression with svd
+## use logistic regression
 
 ```{r}
 #using simple test and training, we previously use cross validation but ends up too long
-
+############# using svd version of data #########
 # time the code execution
 start.time <- Sys.time()
 
@@ -498,7 +565,33 @@ for (i in 1:100) {
 }
 
 ## determine best model
-best.accuracy(log.result)
+best.accuracy(log.result, testdf = test.svd)
+system("say just finished")
+
+
+############# using dfm version of data #########
+# time the code execution
+start.time <- Sys.time()
+
+logfit <- glm(label ~ ., data = train.dfm, family=binomial)
+
+total.time.train.log <- Sys.time() - start.time
+
+## Took less than a minute to return a model
+total.time.train.log
+
+##################### predict with test ##################
+# predict
+logpredict <- predict(logfit, newdata = test.dfm,  type = "response")
+log.result <- vector(mode = "list",length=100)
+
+## generate list with different threshold
+for (i in 1:100) {
+  log.result[[i]] <- 1*(logpredict > i/100 )
+}
+
+## determine best model
+best.accuracy(log.result, testdf = test.dfm)
 system("say just finished")
 ```
 
