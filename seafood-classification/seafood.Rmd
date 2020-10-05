@@ -256,8 +256,9 @@ dim(dfm.train.Noun)
 train.dfm <- data.frame(label=as.factor(train$seafood_yn), 
                         popseafood = train$popseafood, 
                         digit4 = train$digit4,
-                        dfm.train.Noun)
-
+                        dfm.train.Noun) %>%
+  select(-document)
+head(train.dfm)
 ```
 ### preprocess training set using all words then convert it to 300 variable using svd
 ```{r}
@@ -378,7 +379,8 @@ dim(dfm.train.Noun)
 test.dfm <- data.frame(label=as.factor(test$seafood_yn), 
                        popseafood = test$popseafood, 
                        digit4 = test$digit4, 
-                       dfm.test.Noun) 
+                       dfm.test.Noun) %>%
+  select(-document)
 ```
 
 ### preprocess test set using all words then convert it to 300 variable using svd
@@ -504,16 +506,12 @@ best.accuracy <- function(result, testdf) {
 ##################### using simple test and training ##################
 
 ################ using dfm version of data ###########
-knn.result <- vector(mode = "list",length=5)
-tune.knn <- c(3,5,25,50,100)
+
 
 set.seed(1234)
-for (i in seq_along(tune.knn)) {
-  knn.result[[i]] <- knn(train.dfm,test.dfm,train.dfm$label, k = tune.knn[i])
-}
+knn.result <- knn(train.dfm,test.dfm,train.dfm$label, k = 1)
 
-
-best.accuracy(knn.result,testdf = test.svd)
+best.accuracy(knn.result,testdf = test.dfm)
 system("say just finished")
 
 
@@ -523,7 +521,7 @@ system("say just finished")
 
 ################ using svd version of data ###########
 knn.result <- vector(mode = "list",length=5)
-tune.knn <- c(3,5,25,50,100)
+tune.knn <- c(3,5,10,25,50)
 
 set.seed(1234)
 for (i in seq_along(tune.knn)) {
