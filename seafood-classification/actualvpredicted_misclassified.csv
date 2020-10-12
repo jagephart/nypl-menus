@@ -1,0 +1,155 @@
+name,translate,actual,predicted
+Findon Haddocks,Findon Haddocks,1,0
+Eels,Eels,1,0
+Boiled turbot,Boiled turbot,1,0
+Terrapin in Chafing Dish,Terrapin in Chafing Dish,1,0
+Weakfish,Weakfish,1,0
+Sardellen sandwich,Anchovy sandwich,0,1
+Puree of Split Peas,Puree of Split Peas,1,0
+Broiled Finan Haddie,Broiled Finan Haddie,1,0
+Cavier on Toast,Cavier on Toast,1,0
+"Smelts, fines herbes","Smelts, fines herbes",1,0
+"Finnan haddie, steamed","Finnan haddie, steamed",1,0
+Tripe and oysters,Tripe and oysters,1,0
+"No. 7 Sunday Morning Baked Beans, Half Portion Fish Ball (1), Coffee Brown Bread","No. 7 Sunday Morning Baked Beans, Half Portion Fish Ball (1), Coffee Brown Bread",1,0
+"EGGS, with Kippered Herring","EGGS, with Kippered Herring",0,1
+"Dry Monopole, Red Top","Dry Monopole, Red Top",0,1
+Fresh Mackeral Maitre d'Hotel,Fresh Mackeral Maitre d'Hotel,1,0
+Dry Monopole Red Top,Dry Monopole Red Top,0,1
+Hamburger marinated herring,Hamburger marinated herring,0,1
+"Philadelphia Capon, Egg Sauce","Philadelphia Capon, Egg Sauce",1,0
+FINNAN HADDIE A L'ECOSSAISE,FINNAN HADDIE A SCOTTISH,1,0
+"Pompano, Foyot sauce","Pompano, Foyot sauce",1,0
+Sturgeon,Sturgeon,1,0
+"Bass' Finest October Brew Pale Ale, Mug; Tankard","Bass' Finest October Brew Pale Ale, Mug; Tankard",1,0
+"Broiled Tripe, Creole and Lyonnaise","Broiled Tripe, Creole and Lyonnaise",1,0
+"Panned Pike, Temato Sauce","Panned Pike, Temato Sauce",1,0
+"Spanish Fries in Crumbs, Raifort","Spanish Fries in Crumbs, Raifort",0,1
+"FRIED CROPPIE, Tartare Sauce","FRIED CROPPIE, Tartare Sauce",0,1
+"Small Fillet, Pocahontas","Small Fillet, Pocahontas",1,0
+Fried with brown butter,Fried with brown butter,0,1
+Morue a la Creme,Cod in Cream,0,1
+Saumon Fume Grille,Grilled Smoked Salmon,0,1
+Mackerels a la Case,Mackerels a la Case,0,1
+Baked Sheephead a la Creole.,Baked Sheephead a la Creole.,0,1
+Anchovy Toast Olives,Anchovy Toast Olives,1,0
+Broiled live,Broiled live,0,1
+Russian Cavier,Russian Cavier,1,0
+Huitres de l'Est sur Coquille,Eastern Oysters on Shell,0,1
+Broiled Colorado Mountain Trout,Broiled Colorado Mountain Trout,0,1
+"Blue Point, Cotuit, Buzzard Bay, Cape Cod, Rockaway","Blue Point, Cotuit, Buzzard Bay, Cape Cod, Rockaway",0,1
+Casserolettes of Lobster - Newburg.,Casserolettes of Lobster - Newburg.,0,1
+"Salad: Lobster-, Potato-, Celery","Salad: Lobster-, Potato-, Celery",1,0
+Lachs,salmon,0,1
+"Cold Oyster Bay asparagus, French dressing","Cold Oyster Bay asparagus, French dressing",1,0
+Live haddock,Live haddock,1,0
+Homard Salade,Lobster Salad,0,1
+Anchois Salade,Anchovies Salad,0,1
+Crevette Salade,Shrimp Salad,0,1
+Finnan-haddie in cream in bordure,Finnan-haddie in cream in bordure,1,0
+Broiled weakfish with sliced cucumbers,Broiled weakfish with sliced cucumbers,1,0
+Hot or cold clam broth in cup,Hot or cold clam broth in cup,0,1
+2 Boiled or Fried,2 Boiled or Fried,0,1
+Broiled King Rail,Broiled King Rail,1,0
+"Blue Points, Half Shell (nine)","Blue Points, Half Shell (nine)",0,1
+Baked Welsh rarebit a la Snelling,Baked Welsh rarebit a la Snelling,0,1
+"Sardellen, per plate","Anchovies, per plate",0,1
+"Cape, Cods Rockaways and Blue-Points a Specialty","Cape, Cods Rockaways and Blue-Points a Specialty",0,1
+"Boiled Philadelphia Capon, with Oyster Sc.","Boiled Philadelphia Capon, with Oyster Sc.",0,1
+"Weakfish, Broiled","Weakfish, Broiled",1,0
+"STEWED (Half Doz.), 25","STEWED (Half Doz.), 25",0,1
+"Fried (Half Doz.),","Fried (Half Doz.),",0,1
+Fried kingfish,Fried kingfish,1,0
+"Fried New York Count Oysters, one half dozen","Fried New York Count Oysters, one half dozen",0,1
+"Salads, mayonnaise: Crab","Salads, mayonnaise: Crab",0,1
+Cherrystones (Clams),Cherrystones (Clams),0,1
+Potage Tortue,Turtle Soup,0,1
+"Red, White and Blue Slices","Red, White and Blue Slices",0,1
+Findon Haddies,Findon Haddies,1,0
+Broiled Weakfish & bacon,Broiled Weakfish & bacon,1,0
+"Broiled Schnapper, Sauce Hollandaise","Broiled Schnapper, Sauce Hollandaise",1,0
+Pate d'Anchois ou de Hareng,Anchovy or Herring Pate,0,1
+"Morue Fraiche, Hollandaise","Fresh Cod, Dutch",0,1
+Turbot de la Rochelle sauce Crevette,Turbot from La Rochelle with shrimp sauce,0,1
+Devilled Goose,Devilled Goose,0,1
+"Mussels, Bercy","Mussels, Bercy",1,0
+SCOLLOPS SAUTES A LA POULETTE,SCOLLOPS JUMPING THE CHICKEN,1,0
+"Broiled pompano, ravigote","Broiled pompano, ravigote",0,1
+Friture de poisson melee,Fried mixed fish,0,1
+Soft Clams a la Union League,Soft Clams a la Union League,0,1
+"Soft Clams a la Union League, half","Soft Clams a la Union League, half",0,1
+Filet de poisson a la Morney,Fish fillet a la Morney,0,1
+Stewed Deep Water Terrapin Amontillado,Stewed Deep Water Terrapin Amontillado,0,1
+"Buisson d'homard, ravigotte","Lobster bush, ravigotte",0,1
+Spanish Macherel,Spanish Macherel,1,0
+"Eggs, poached, anchovy toast","Eggs, poached, anchovy toast",0,1
+"Frog Legs, au vin de sauterne","Frog Legs, au vin de sauterne",1,0
+"Steamed Redfish, Normandy Sauce","Steamed Redfish, Normandy Sauce",1,0
+"Broiled Croppie, Fine Herbs","Broiled Croppie, Fine Herbs",1,0
+Steamed Pike Caper Sauce,Steamed Pike Caper Sauce,1,0
+"Grenouilles sautees, Poulette","Sauteed frogs, Chicken",0,1
+Lake Superior Whitefish broiled,Lake Superior Whitefish broiled,0,1
+Pate de Hareng,Herring paste,0,1
+"Morue Fraiche, Hollandaise, half","Cod Fresh, Dutch, half",0,1
+Imported Sardinessmall box,Imported Sardinessmall box,1,0
+"Stewed Giblets, Hungarian Style","Stewed Giblets, Hungarian Style",0,1
+"Boiled Fowl, Bacon, Cream Sauce","Boiled Fowl, Bacon, Cream Sauce",0,1
+"Fried in batter, 1/2 doz.","Fried in batter, 1/2 doz.",0,1
+"Broiled on toast, 1/2 doz.","Broiled on toast, 1/2 doz.",0,1
+Weakfish gratine with Port wine,Weakfish gratine with Port wine,1,0
+"Kennebec Salmon, Royale","Kennebec Salmon, Royale",1,0
+Gebr. Fisch,Bred fish,0,1
+Boiled Pickerel,Boiled Pickerel,1,0
+White Rock Lithia Water,White Rock Lithia Water,0,1
+Homard Xavier,Lobster Xavier,0,1
+Imitacion de Tortuga,Turtle Imitation,0,1
+Schellfisch m. F.-Kartoffeln,Haddock m. F. potatoes,1,0
+Bouillon m. Mark,Bouillon m. Mark,0,1
+Langouste Mayonnaise,Lobster Mayonnaise,0,1
+Pommes Seashell,Seashell apples,1,0
+"Broiled Mountain Trout, Salt Pork","Broiled Mountain Trout, Salt Pork",0,1
+"Extra Fish or Meat Orders, 10cts.","Extra Fish or Meat Orders, 10cts.",1,0
+"Long Island Brook Trout saute, Meuniere","Long Island Brook Trout saute, Meuniere",0,1
+Fried Skinned Perch,Fried Skinned Perch,0,1
+"Fried Salt Pork, Plain or Cream Sauce","Fried Salt Pork, Plain or Cream Sauce",0,1
+Georgetown planked shad,Georgetown planked shad,0,1
+"Jelly, Crab apple","Jelly, Crab apple",0,1
+"Frischer Hummer, Mayonnaise","Fresh lobster, mayonnaise",0,1
+"Parsnips, stewed or fried","Parsnips, stewed or fried",0,1
+"Truite Froide, Remoulade","Cold Trout, Remoulade",0,1
+Sopa de mock Tortuga,Tortuga mock soup,1,0
+Tortilla con Ostiones,Omelette with Oysters,0,1
+"Filete de Trucha, Frito o a la Parrilla","Trout Fillet, Fried or Grilled",0,1
+Courtbouillion de Pescado,Fish Courtbouillion,0,1
+"Maquerau espagnol, Bearnaise","Spanish mackerel, Bearnaise",0,1
+Ranas 1/2 doc.,Frogs 1/2 doc.,0,1
+Pickerel,Pickerel,1,0
+Baked Long Beach Bluefish a la Mariniere,Baked Long Beach Bluefish a la Mariniere,0,1
+"Heilbutt-Schnitte, Tomatensauce","Halibut slices, tomato sauce",0,1
+Peche Cardinal:,Cardinal Fishing:,0,1
+Harengs Moutarde,Herring Mustard,0,1
+Gekochte Goldmakrele,Boiled golden mackerel,0,1
+Gebacken. Fisch,Baked. fish,0,1
+Rumpsteak m. Meerrettig,Rump steak m. Horseradish,0,1
+Whitebait en corbeille,Whitebait in basket,1,0
+"Boiled, Fried, Shirred, or Scrambled","Boiled, Fried, Shirred, or Scrambled",1,0
+Fish Cakes Cream or Tomato Sce.,Fish Cakes Cream or Tomato Sce.,1,0
+"Aiguillette De Kingfish, Florentine","Aiguillette De Kingfish, Florentine",1,0
+Que Placer Conachas,What a Pleasure Conachas,1,0
+Fried Individual Flounder in Sweet Butter,Fried Individual Flounder in Sweet Butter,1,0
+Salt macherel,Salt macherel,1,0
+Terrapin a la Union Club,Terrapin a la Union Club,1,0
+Cold Rollmops and potatoes,Cold Rollmops and potatoes,1,0
+finnan haddie au gratin,finnan haddie au gratin,1,0
+Little Neck Patties,Little Neck Patties,0,1
+"Cold Sliced Egg, Tomato, Filets of Anchovies Monte Carlo","Cold Sliced Egg, Tomato, Filets of Anchovies Monte Carlo",1,0
+"Fried Boston Scrod, Vegetables","Fried Boston Scrod, Vegetables",1,0
+Filet de Brotola Marguery,Brotola Marguery fillet,1,0
+Turbot Mayonnaise Antiboise,Turbot Mayonnaise Antiboise,1,0
+"Scampi Grille, Renato","Scampi Grille, Renato",1,0
+"Suggested Menu: Chilled Tomato Juice; Consomme San Remo; Poached Turbot, Hollandaise Sauce; Roast Vermont Turkey, Cranberry Sauce (Chestnut Stuffing); Chateau Potatoes; Avocado Pear Salad; Coupe Denise; Fresh Fruit; Coffee","Suggested Menu: Chilled Tomato Juice; Consomme San Remo; Poached Turbot, Hollandaise Sauce; Roast Vermont Turkey, Cranberry Sauce (Chestnut Stuffing); Chateau Potatoes; Avocado Pear Salad; Coupe Denise; Fresh Fruit; Coffee",1,0
+La Paupiette de Sole Madison Sauce Nantua,Madison Sun Eyelid Sauce Nantua,1,0
+Echte Haifischflossensuppe in der Tasse,Real shark fin soup in the mug,1,0
+"A Salad of Bibb and Endive Lettuce, Shrimp and Avocado","A Salad of Bibb and Endive Lettuce, Shrimp and Avocado",0,1
+Swordfish Natalie,Swordfish Natalie,1,0
+Mussels Au Gratin. With garlic,Mussels Au Gratin. With garlic,1,0
