@@ -679,8 +679,9 @@ test.predicted.actual.logsvd.2 <- data.frame(name = test$name,
                          translate = test$translatedText,
                          actual = test$seafood_yn,
                          predicted = log.result.svd.2[[31]]) ## best threshold is 0.01
-test.predicted.actual.logsvd.2 %>%
+actualvpredicted <- test.predicted.actual.logsvd.2 %>%
   filter(actual != predicted)
+write_csv(actualvpredicted, "actualvpredicted_misclassified.csv")
 
 
 ############# using dfm with only Noun version of data #########
@@ -711,11 +712,11 @@ system("say just finished")
 coef.table.log.noun <- tidy(logfit.noun)
 coef.table.log.noun %>%
   arrange(desc(estimate)) %>%
-  filter(term == "turbot")
+  filter(term == "fish")
 test.predicted.actual.lognoun <- data.frame(name = test$name,
                          translate = test$translatedText,
                          actual = test$seafood_yn,
-                         predicted = log.result.noun[[27]]) ## best threshold is 0.33
+                         predicted = log.result.noun[[27]]) ## best threshold is 0.27 #
 test.predicted.actual.lognoun %>%
   filter(actual != predicted)
 
@@ -747,7 +748,7 @@ system("say just finished")
 coef.table.log.allword <- tidy(logfit.allword)
 coef.table.log.allword %>%
   arrange(desc(estimate)) %>%
-  filter(term == "turbot")
+  filter(term == "fish")
 test.predicted.actual.logallword <- data.frame(name = test$name,
                          translate = test$translatedText,
                          actual = test$seafood_yn,
@@ -756,6 +757,11 @@ test.predicted.actual.logallword %>%
   filter(actual != predicted)
 
 ```
+## TO DO
+## unique courpus(((df.labeled$dish) vs unique(dfulabeled$dish)
+## take dish that has logit close to trhreshold
+## make .csv for predicted != actual to check
+## quick summary on where we are right now 
 
 # make models use random forest 
 ## use R default setting - Error: protect(): protection stack overflow 
