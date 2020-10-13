@@ -34,7 +34,8 @@ prop.table(table(df.labeled$seafood_yn))
 df.unlabeled <- df %>%
   filter(!seafood_yn %in% c(0,1))
 
-head(df)
+df %>%
+  filter(name == "Huitres de l'Est sur Coquille")
 
 ```
 Evaluate distribution of labeled and non labeled by Year
@@ -217,7 +218,7 @@ prop.table(table(train$seafood_yn))
 prop.table(table(test$seafood_yn))
 
 save(train, file = "train.Rdata")
-save(test, file = "train.Rdata")
+save(test, file = "test.Rdata")
 ```
 
 
@@ -422,6 +423,7 @@ test.dfm <- data.frame(label=as.factor(test$seafood_yn),
   select(-doc_id)
 
 save(test.dfm, file = "testdfm.Rdata")
+load("traindfm.Rdata")
 ```
 
 ### preprocess test set using all words then convert it to 300 variable using svd
@@ -686,11 +688,15 @@ write_csv(actualvpredicted, "actualvpredicted_misclassified.csv")
 
 ############# using dfm with only Noun version of data #########
 # time the code execution
-start.time <- Sys.time()
+
 
 logfit.noun <- glm(label ~ ., data = train.dfm, family=binomial)
-
-total.time.train.log.noun <- Sys.time() - start.time
+## there are multicollinerity problem in dataset
+coef.table.log.noun <- tidy(logfit.noun)
+coef.sig <- coef.table.log.noun %>%
+  filter(p.value < 0.1)
+term.sig <- paste(coef.sig$term[-1] ,collapse = "+")
+logfit.noun <- glm(paste("label~", term.sig, sep = ""), data = train.dfm, family=binomial)
 
 ## Took less than a minute to return a model
 total.time.train.log.noun
@@ -698,6 +704,9 @@ total.time.train.log.noun
 ##################### predict with test ##################
 # predict
 logpredict <- predict(logfit.noun, newdata = test.dfm,  type = "response")
+
+
+
 log.result.noun <- vector(mode = "list",length=100)
 
 ## generate list with different threshold
@@ -709,14 +718,11 @@ for (i in 1:100) {
 best.accuracy(log.result.noun, testdf = test.dfm)
 system("say just finished")
 
-coef.table.log.noun <- tidy(logfit.noun)
-coef.table.log.noun %>%
-  arrange(desc(estimate)) %>%
-  filter(term == "fish")
+
 test.predicted.actual.lognoun <- data.frame(name = test$name,
                          translate = test$translatedText,
                          actual = test$seafood_yn,
-                         predicted = log.result.noun[[27]]) ## best threshold is 0.27 #
+                         predicted = log.result.noun[[25]]) ## best threshold is 0.27 #
 test.predicted.actual.lognoun %>%
   filter(actual != predicted)
 
@@ -755,7 +761,8 @@ test.predicted.actual.logallword <- data.frame(name = test$name,
                          predicted = log.result.allword[[27]]) ## best threshold is 0.33
 test.predicted.actual.logallword %>%
   filter(actual != predicted)
-
+library(car)
+summary(logfit.noun)
 ```
 ## TO DO
 ## unique courpus(((df.labeled$dish) vs unique(dfulabeled$dish)
