@@ -11,7 +11,6 @@ library(tidyverse)
 library(caret)
 library(quanteda)
 library(doSNOW) #run model to run in each core
-library(cld3)
 library(googleLanguageR)
 library(irlba)
 library(class)
@@ -25,18 +24,23 @@ df <- read_csv("/Users/alannurcahyo/Documents/Documents/AU/fall2020/DATA/Seafood
 ##check label
 unique(df$seafood_yn) 
 
-#create labeled dataset
-df.labeled <- df %>%
-  filter(seafood_yn %in% c(0,1))
-prop.table(table(df.labeled$seafood_yn))
+# #create labeled dataset
+# df.labeled <- df %>%
+#   filter(seafood_yn %in% c(0,1))
+# prop.table(table(df.labeled$seafood_yn))
+# 
+# #create unlabeled dataset
+# df.unlabeled <- df %>%
+#   filter(!seafood_yn %in% c(0,1))
 
-#create unlabeled dataset
+df.labeled <- read_csv("~/Downloads/dfnew_labeled_20201012.csv")
+
 df.unlabeled <- df %>%
-  filter(!seafood_yn %in% c(0,1))
+  anti_join(df.labeled, by = "id")
 
-df %>%
-  filter(name == "Huitres de l'Est sur Coquille")
-
+## check
+nrow(df) == nrow(df.labeled) + nrow(df.unlabeled)
+unique(df.unlabeled$seafood_yn)
 ```
 Evaluate distribution of labeled and non labeled by Year
 ```{r}
@@ -85,31 +89,26 @@ n_new_sample <- count.first.appeared %>%
   filter(first_appeared >1907,
          n_sample >0)
 
-## we take n number of observation from unlabeled dataset by following the number we need on n_new_sample$n_sample
-new_sample <- vector(mode = "list", length = nrow(n_new_sample))
-for (i in seq_along(new_sample)) {
-  new_sample[[i]] <- df.unlabeled %>%
-    filter(first_appeared == n_new_sample$first_appeared[[i]]) %>%
-    sample_n(n_new_sample$n_sample[[i]])
-}
-new_sample <- do.call(rbind, new_sample)
-
-# write it to csv
-# write_csv(new_sample,"new_sample.csv")
-# label it manually, then load the labeled new sample into R
-new_sample_labeled <- read_csv("new_sample_labeled.csv")
-new_sample_labeled <- new_sample_labeled %>%
-  filter(seafood_yn %in% c(0,1))
-head(new_sample_labeled)
+# ## we take n number of observation from unlabeled dataset by following the number we need on n_new_sample$n_sample
+# new_sample <- vector(mode = "list", length = nrow(n_new_sample))
+# for (i in seq_along(new_sample)) {
+#   new_sample[[i]] <- df.unlabeled %>%
+#     filter(first_appeared == n_new_sample$first_appeared[[i]]) %>%
+#     sample_n(n_new_sample$n_sample[[i]])
+# }
+# new_sample <- do.call(rbind, new_sample)
+# 
+# # write it to csv
+# # write_csv(new_sample,"new_sample.csv")
+# # label it manually, then load the labeled new sample into R
+# new_sample_labeled <- read_csv("new_sample_labeled.csv")
+# new_sample_labeled <- new_sample_labeled %>%
+#   filter(seafood_yn %in% c(0,1))
+# head(new_sample_labeled)
 ```
 
 Translate
 ```{r}
-############### detect langauage use cld3 #################### 
-df.labeled.cld3 <- df.labeled%>%
-  mutate(name = str_to_lower(name),
-         lang = cld3::detect_language(name))
-
 ###################### use google API #########################
 ## the output file is saved in .csv because it is costly and time consuming to run it everytime
 # gl_auth("seafood-translation-f329aa685c7f.json")
@@ -135,18 +134,36 @@ df.name.translate.bind <- read_csv("NameTranslated.csv")
 # 
 #  df.name.translate.newsample <- do.call(rbind, df.name.translate.newsample)
 df.name.translate.newsample <- read_csv("new_sample_translated.csv")
- 
-##use translated as our dataset
-df.labeled <- cbind(df.labeled, df.name.translate.bind)
-df.labeled <- df.labeled %>%
-  dplyr::select(-text , -X1, -description)
-## for new sample
-new_sample_labeled <- cbind(new_sample_labeled, df.name.translate.newsample)
-new_sample_labeled <- new_sample_labeled %>%
-  dplyr::select(-text, -description)
 
-## bind with new labeled dataset
-df.labeled <- rbind(df.labeled, new_sample_labeled)
+df.labeled.translate <- rbind(df.name.translate.bind[,-1], df.name.translate.newsample)
+
+##check wheter we can cbind translated dish name and label from labeled data set
+check<- df.labeled$name == df.labeled.translate$text
+check[FALSE]
+
+# translate unlabeled
+# gl_auth("seafood-translation-2ae5d5055080.json")
+# df.unlabeled.translate <- vector(mode = "list", length = nrow(df.unlabeled))
+# #
+# for (i in 300001:392095) {
+#       df.unlabeled.translate[[i]] <- gl_translate(df.unlabeled$name[i], target = "en")
+#       print(i)
+# }
+# 
+# 
+#  df.unlabeled.translate.part4 <- do.call(rbind, df.unlabeled.translate[300001:392095])
+#  write_csv(df.unlabeled.translate.part4, file = "unlabeledtranslate300001toend.csv")
+#  
+#  rm(df.unlabeled.translate.part3)
+
+### load translated documents for unlabeled
+part1 <- read_csv("unlabeledtranslate1to100000.csv")
+part2 <- read_csv("unlabeledtranslate100001to200000.csv")
+part3 <- read_csv("unlabeledtranslate200001to300000.csv")
+part4 <- read_csv("unlabeledtranslate300001toend.csv")
+
+unlabeled.translated <- rbind(part1[,-1],part2[,-1],part3[,-1],part4)
+nrow(unlabeled.translated) == nrow(df.unlabeled)
 
 ## check distribution
 #Histogram of first time the menu appeared
@@ -168,29 +185,36 @@ count.first.appeared <- df.labeled %>%
   count() %>%
   spread(seafoodTF, n)
 
+## add more label for pattern that are not available in training (see steps on appendix)
+## our pattern
+new.labeled.22oct <- df.unlabeled %>%
+  filter(id %in% sampleoct22.vector)
+write.csv(new.labeled.22oct, "newlabeled22oct.csv")
+```
+## managing dataset after translation and new added label
+```{r}
+## check
+(df.unlabeled$name == unlabeled.translated$text)[FALSE]
+#merge
+df.unlabeled <- cbind(df.unlabeled, translatedText = unlabeled.translated$translatedText)
 
-## Comparation between cld3 and GoogleAPI  -- googleAPI is outperform cld3 in language detection
+## check
+(df.labeled$name == df.labeled.translate$text)[FALSE]
+## merge
+df.labeled <- cbind(df.labeled, translatedText = df.labeled.translate$translatedText)
 
-df.name.translate.bind %>%
-  group_by(detectedSourceLanguage) %>%
-  tally() %>%
-  arrange(desc(n)) %>%
-  mutate(prop = n/nrow(df.name.translate.bind)) %>%
-  slice(1:5) %>%
-  ggplot(aes(detectedSourceLanguage,prop)) + geom_col() +
-  theme_bw() + labs(title = "top 5 language by google")
-
-df.labeled.cld3 %>%
-  group_by(lang) %>%
-  tally() %>%
-  arrange(desc(n)) %>%
-  mutate(prop = n/nrow(df.name.translate.bind)) %>%
-  slice(1:5) %>%
-  ggplot(aes(lang,prop)) + geom_col() +
-  theme_bw() + labs(title = "top 5 language by cld3")
+## append them all
+df.all <- rbind(df.unlabeled, df.labeled)
+## check
+nrow(df.all) == nrow(df)
+```
 
 
-
+Adding, mutating variable
+```{r}
+df.labeled <- data.frame(name = df.labeled$name,
+                        translatedText = df.labeled.translate$translatedText, 
+                         seafood_yn =df.labeled$seafood_yn)
 ### adding new variable to df.labeled to improve model performance
 popularseafoodwords <- c("oyster", "Oyster", "crab","Crab", "clam", "Clam","lobster","Lobster", 
                          "salmon", "Salmon", "bass", "Bass", "mackerel", "Mackerel","halibut","Halibut")
@@ -198,6 +222,7 @@ popularseafoodwords <- paste(popularseafoodwords,collapse = "|")
 df.labeled <- df.labeled %>%
   mutate(popseafood = ifelse(str_detect(translatedText,popularseafoodwords),1,0),
          digit4 = ifelse(str_detect(translatedText,"[:digit:]{4}"),1,0))
+head(df.labeled)
 ```
 
 # create training and test
@@ -423,7 +448,6 @@ test.dfm <- data.frame(label=as.factor(test$seafood_yn),
   select(-doc_id)
 
 save(test.dfm, file = "testdfm.Rdata")
-load("traindfm.Rdata")
 ```
 
 ### preprocess test set using all words then convert it to 300 variable using svd
@@ -642,7 +666,7 @@ coef.table.log.svd
 test.predicted.actual.logsvd <- data.frame(name = test$name,
                          translate = test$translatedText,
                          actual = test$seafood_yn,
-                         predicted = log.result.svd[[40]]) ## best threshold is 0.01
+                         predicted = log.result.svd[[46]]) ## best threshold is 0.01
 test.predicted.actual.logsvd %>%
   filter(actual != predicted)
 
@@ -680,7 +704,7 @@ coef.table.log.svd.2
 test.predicted.actual.logsvd.2 <- data.frame(name = test$name,
                          translate = test$translatedText,
                          actual = test$seafood_yn,
-                         predicted = log.result.svd.2[[31]]) ## best threshold is 0.01
+                         predicted = log.result.svd.2[[29]]) ## best threshold is 0.29
 actualvpredicted <- test.predicted.actual.logsvd.2 %>%
   filter(actual != predicted)
 write_csv(actualvpredicted, "actualvpredicted_misclassified.csv")
@@ -699,13 +723,11 @@ term.sig <- paste(coef.sig$term[-1] ,collapse = "+")
 logfit.noun <- glm(paste("label~", term.sig, sep = ""), data = train.dfm, family=binomial)
 
 ## Took less than a minute to return a model
-total.time.train.log.noun
+# total.time.train.log.noun
 
 ##################### predict with test ##################
 # predict
 logpredict <- predict(logfit.noun, newdata = test.dfm,  type = "response")
-
-
 
 log.result.noun <- vector(mode = "list",length=100)
 
@@ -722,7 +744,8 @@ system("say just finished")
 test.predicted.actual.lognoun <- data.frame(name = test$name,
                          translate = test$translatedText,
                          actual = test$seafood_yn,
-                         predicted = log.result.noun[[25]]) ## best threshold is 0.27 #
+                         prob = logpredict,
+                         predicted = log.result.noun[[34]]) ## best threshold is 0.27 #
 test.predicted.actual.lognoun %>%
   filter(actual != predicted)
 
@@ -731,6 +754,11 @@ test.predicted.actual.lognoun %>%
 start.time <- Sys.time()
 
 logfit.allword <- glm(label ~ ., data = train.dfm.allword, family=binomial)
+coef.table.log.allword <- tidy(logfit.allword)
+coef.sig <- coef.table.log.allword %>%
+  filter(p.value < 0.1)
+term.sig <- paste(coef.sig$term[-1] ,collapse = "+")
+logfit.allword <- glm(paste("label~", term.sig, sep = ""), data = train.dfm.allword, family=binomial)
 
 total.time.train.log.allword <- Sys.time() - start.time
 
@@ -739,7 +767,7 @@ total.time.train.log.allword
 
 ##################### predict with test ##################
 # predict
-logpredict <- predict(logfit.noun, newdata = test.dfm.allword,  type = "response")
+logpredict <- predict(logfit.allword, newdata = test.dfm.allword,  type = "response")
 log.result.allword <- vector(mode = "list",length=100)
 
 ## generate list with different threshold
@@ -753,22 +781,108 @@ system("say just finished")
 
 coef.table.log.allword <- tidy(logfit.allword)
 coef.table.log.allword %>%
-  arrange(desc(estimate)) %>%
-  filter(term == "fish")
+  arrange(desc(estimate))
 test.predicted.actual.logallword <- data.frame(name = test$name,
                          translate = test$translatedText,
                          actual = test$seafood_yn,
                          predicted = log.result.allword[[27]]) ## best threshold is 0.33
 test.predicted.actual.logallword %>%
   filter(actual != predicted)
-library(car)
-summary(logfit.noun)
 ```
-## TO DO
+## APPENDIX TO DO
 ## unique courpus(((df.labeled$dish) vs unique(dfulabeled$dish)
 ## take dish that has logit close to trhreshold
-## make .csv for predicted != actual to check
+## make .csv for predicted != actual to check - done
 ## quick summary on where we are right now 
+
+```{r}
+## take dish that has logit close to trhreshold
+####### logfit.noun ######
+index.range <- logpredict > 0.3 & logpredict < 0.38
+test.predicted.actual.lognoun[index.range,]%>%
+  filter(actual != predicted)
+
+#svd unweighted
+index.range.2 <- logpredict.2 > 0.20 & logpredict.2 < 0.40 ##threshold = 0.29
+test.predicted.actual.logsvd.2[index.range.2,]%>%
+  filter(actual != predicted)
+
+#create a corpus
+corpus <- corpus(unlabeled.translated$translatedText) 
+
+#create document frequency matrix with verb
+dfm.unlabeled <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+
+count.train <- apply(dfm.train, 2, sum)
+count.test <- apply(dfm.test,2,sum)
+## too big to count
+# count.unlabeled <- apply(dfm.unlabeled, 2, sum)
+# try to trim it
+dfm.unlabeled.trimmed <- dfm_trim(dfm.unlabeled, min_docfreq = 15, verbose = TRUE)
+dim(dfm.unlabeled.trimmed)
+count.unlabeled <- apply(dfm.unlabeled.trimmed[1:100000,], 2, sum)
+count.unlabeled2 <- apply(dfm.unlabeled.trimmed[100001:200000,], 2, sum)
+count.unlabeled3 <- apply(dfm.unlabeled.trimmed[200001:300000,], 2, sum)
+count.unlabeled4 <- apply(dfm.unlabeled.trimmed[300001:392095,], 2, sum)
+count.unlabeled <- count.unlabeled+count.unlabeled2+count.unlabeled3+count.unlabeled4
+
+count.train <- data.frame(name = names(count.train),
+           freq = count.train)
+
+count.test <- data.frame(name = names(count.test),
+           freq = count.test)
+
+count.unlabeled <- data.frame(name = names(count.unlabeled),
+           freq = count.unlabeled)
+
+## top words
+topterm.train <- count.train %>%
+  arrange(desc(freq)) %>%
+  slice(1:10000)
+
+topterm.test <- count.test %>%
+  arrange(desc(freq)) %>%
+  slice(1:1000)
+
+topterm.unlabeled <- count.unlabeled %>%
+  arrange(desc(freq)) %>%
+  slice(1:3000)
+
+nothing.on.labeled <- topterm.unlabeled %>%
+  left_join(topterm.train, by = "name") %>%
+  left_join(topterm.test, by = "name") %>%
+  filter(is.na(freq.y) & is.na(freq))
+
+nothing.on.labeled.smp <- nothing.on.labeled %>%
+  mutate(freq.x = round(freq.x/100)+1)
+
+sampleoct22 <- vector(mode = "list", length = nrow(nothing.on.labeled))
+for (i in seq_along(sampleoct22)) {
+  sampleoct22[[i]] <- df.unlabeled %>%
+    filter(str_detect(translatedText,nothing.on.labeled$name[i])) %>%
+    select(id, first_appeared) %>%
+    arrange(desc(first_appeared)) %>%
+    slice(1:nothing.on.labeled.smp$freq.x[[i]]) %>% ##take number of dish from latest dish (we low on new name dish)
+    select(id)
+}
+
+sampleoct22 <- do.call(rbind, sampleoct22)
+sampleoct22 <- unique(sampleoct22)
+sampleoct22.vector <- sampleoct22$id
+```
+
+
+
+
+
 
 # make models use random forest 
 ## use R default setting - Error: protect(): protection stack overflow 
