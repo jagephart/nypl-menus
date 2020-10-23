@@ -185,14 +185,6 @@ count.first.appeared <- df.labeled %>%
   count() %>%
   spread(seafoodTF, n)
 
-## add more label for pattern that are not available in training (see steps on appendix)
-## our pattern
-new.labeled.22oct <- df.unlabeled %>%
-  filter(id %in% sampleoct22.vector)
-write.csv(new.labeled.22oct, "newlabeled22oct.csv")
-```
-## managing dataset after translation and new added label
-```{r}
 ## check
 (df.unlabeled$name == unlabeled.translated$text)[FALSE]
 #merge
@@ -203,21 +195,46 @@ df.unlabeled <- cbind(df.unlabeled, translatedText = unlabeled.translated$transl
 ## merge
 df.labeled <- cbind(df.labeled, translatedText = df.labeled.translate$translatedText)
 
-## append them all
+## add more label for pattern that are not available in training (see steps on appendix)
+## our pattern
+new.labeled.22oct <- df.unlabeled %>%
+  filter(id %in% sampleoct22.vector)
+write.csv(new.labeled.22oct, "newlabeled22oct.csv")
+newlabeled22oct <- read_csv("newlabeled22oct.csv")
+newlabeled22oct <- newlabeled22oct[,-1] 
+which(is.na(newlabeled22oct$seafood_yn))
+newlabeled22oct <- newlabeled22oct[-598,] 
+df.labeled <- rbind(df.labeled, newlabeled22oct)
+
+df.unlabeled <- df.unlabeled %>%
+  anti_join(newlabeled22oct, by = "id")
+dim(df.unlabeled)
 df.all <- rbind(df.unlabeled, df.labeled)
+
 ## check
 nrow(df.all) == nrow(df)
+
+## save 
+write_csv(df.all, file = "dfalltranslated.csv")
+write_csv(df.labeled, file = "dflabeledtranslated.csv")
+write_csv(df.unlabeled, file = "dfunlabeledtranslated.csv")
+rm(list = ls())
 ```
-
-
+## Load dataset
+```{r}
+df.labeled <- read_csv("dflabeledtranslated.csv")
+df.labeled <- df.labeled %>%
+  select(name, translatedText, seafood_yn)
+head(df.labeled)
+prop.table(table(df.labeled$seafood_yn))
+unique(df.labeled$seafood_yn)
+```
 Adding, mutating variable
 ```{r}
-df.labeled <- data.frame(name = df.labeled$name,
-                        translatedText = df.labeled.translate$translatedText, 
-                         seafood_yn =df.labeled$seafood_yn)
 ### adding new variable to df.labeled to improve model performance
 popularseafoodwords <- c("oyster", "Oyster", "crab","Crab", "clam", "Clam","lobster","Lobster", 
-                         "salmon", "Salmon", "bass", "Bass", "mackerel", "Mackerel","halibut","Halibut")
+                         "salmon", "Salmon", "bass", "Bass", "mackerel", "Mackerel","halibut","Halibut",
+                         "seafood", "Seafood","turbot","Turbot", "fish","Fish")
 popularseafoodwords <- paste(popularseafoodwords,collapse = "|")
 df.labeled <- df.labeled %>%
   mutate(popseafood = ifelse(str_detect(translatedText,popularseafoodwords),1,0),
