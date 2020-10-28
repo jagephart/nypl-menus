@@ -1,0 +1,205 @@
+---
+title: "Cleaning and preprocessing"
+author: "Alan Nurcahyo"
+date: "10/27/2020"
+output: pdf_document
+---
+
+# Preprocessing
+```{r}
+library(tidyverse)
+```
+
+## Load and review dataset
+```{r}
+#load dataset
+df <- read_csv("/Users/alannurcahyo/Documents/Documents/AU/fall2020/DATA/Seafood_Dishes.csv")
+##check label
+unique(df$seafood_yn)
+```
+## add new sample based on distribution of labeled and non labeled by Year
+```{r}
+####### Histogram for evaluation ##########
+#Histogram of first time the menu appeared
+# It appears that the labeled data lack of observation from later year
+df %>%
+  filter(first_appeared != 0,
+         first_appeared != 1,
+         first_appeared != 2928) %>%
+  mutate( seafoonTF = !is.na(seafood_yn)) %>%
+  ggplot(aes(first_appeared, fill = seafoonTF)) + 
+  geom_histogram(binwidth = 10)
+
+#Histogram of last time the menu appeared
+# It appears that the labeled data has a sufficient range of observation
+df %>%
+  filter(last_appeared != 0,
+         last_appeared != 1,
+         last_appeared != 2928) %>%
+  mutate( seafoonTF = !is.na(seafood_yn)) %>%
+  ggplot(aes(last_appeared, fill = seafoonTF)) + 
+  geom_histogram(binwidth = 10)
+
+# comparison between labeled and unlabeled data by first appeared
+# It appears that labeled data lack of observation after 1908 
+count.first.appeared <- df %>%
+  filter(first_appeared != 0,
+         first_appeared != 1,
+         first_appeared != 2928) %>%
+  mutate( seafoodTF = !is.na(seafood_yn)) %>%
+  group_by(first_appeared, seafoodTF) %>%
+  count() %>%
+  spread(seafoodTF, n)
+
+# number of unlabeled observation after 1097
+sum(count.first.appeared$`FALSE`[count.first.appeared$first_appeared>1907])
+
+# number of labeled observation after 1097
+sum(count.first.appeared$`TRUE`[count.first.appeared$first_appeared>1907], na.rm = TRUE)
+
+####### Generate new sample ##########
+
+# let's take one percent of oberservation after 1908 to be labeled and round it
+# per year we need following observation
+# n_new_sample <- count.first.appeared %>%
+#   mutate(n_sample = round(`FALSE`/100,0)) %>%
+#   select(first_appeared,n_sample) %>%
+#   filter(first_appeared >1907,
+#          n_sample >0)
+# 
+# # ## we take n number of observation from unlabeled dataset by following the number we need on n_new_sample$n_sample
+# new_sample <- vector(mode = "list", length = nrow(n_new_sample))
+# for (i in seq_along(new_sample)) {
+#   new_sample[[i]] <- df.unlabeled %>%
+#     filter(first_appeared == n_new_sample$first_appeared[[i]]) %>%
+#     sample_n(n_new_sample$n_sample[[i]])
+# }
+# new_sample <- do.call(rbind, new_sample)
+# 
+# # write it to csv
+# # write_csv(new_sample,"new_sample.csv")
+# # label it manually, then load the labeled new sample into R
+new_sample_labeled <- read_csv("new_sample_labeled.csv")
+new_sample_labeled <- new_sample_labeled %>%
+  filter(seafood_yn %in% c(0,1))
+head(new_sample_labeled)
+
+df <- df %>%
+  anti_join(new_sample_labeled, by = "id")
+df <- rbind(df, new_sample_labeled)
+```
+
+## Translate
+```{r}
+###################### use google API #########################
+## the output file is saved in .csv because it is costly and time consuming to run it everytime
+# gl_auth("seafood-translation-f329aa685c7f.json")
+# df.name.translate <- vector(mode = "list", length = nrow(df))
+# 
+# for (i in seq_along(df.name.translate)) {
+#      df.name.translate[[i]] <- gl_translate(df$name[i], target = "en")
+# }
+# 
+# df.name.translate.bind <- do.call(rbind, df.name.translate)
+# prop.table(table(df.name.translate.bind$detectedSourceLanguage))
+# 
+# write.csv(df.name.translate.bind,"NameTranslated.csv")
+# df <- cbind(df, df.name.translate.bind$translatedText)  
+
+#################### add vocabulary ##############
+#create a corpus
+corpus <- corpus(unlabeled.translated$translatedText) 
+
+#create document frequency matrix with verb
+dfm.unlabeled <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+
+count.train <- apply(dfm.train, 2, sum)
+count.test <- apply(dfm.test,2,sum)
+## too big to count
+# count.unlabeled <- apply(dfm.unlabeled, 2, sum)
+# try to trim it
+dfm.unlabeled.trimmed <- dfm_trim(dfm.unlabeled, min_docfreq = 15, verbose = TRUE)
+dim(dfm.unlabeled.trimmed)
+count.unlabeled <- apply(dfm.unlabeled.trimmed[1:100000,], 2, sum)
+count.unlabeled2 <- apply(dfm.unlabeled.trimmed[100001:200000,], 2, sum)
+count.unlabeled3 <- apply(dfm.unlabeled.trimmed[200001:300000,], 2, sum)
+count.unlabeled4 <- apply(dfm.unlabeled.trimmed[300001:392095,], 2, sum)
+count.unlabeled <- count.unlabeled+count.unlabeled2+count.unlabeled3+count.unlabeled4
+
+count.train <- data.frame(name = names(count.train),
+           freq = count.train)
+
+count.test <- data.frame(name = names(count.test),
+           freq = count.test)
+
+count.unlabeled <- data.frame(name = names(count.unlabeled),
+           freq = count.unlabeled)
+
+## top words
+topterm.train <- count.train %>%
+  arrange(desc(freq)) %>%
+  slice(1:10000)
+
+topterm.test <- count.test %>%
+  arrange(desc(freq)) %>%
+  slice(1:1000)
+
+topterm.unlabeled <- count.unlabeled %>%
+  arrange(desc(freq)) %>%
+  slice(1:3000)
+
+nothing.on.labeled <- topterm.unlabeled %>%
+  left_join(topterm.train, by = "name") %>%
+  left_join(topterm.test, by = "name") %>%
+  filter(is.na(freq.y) & is.na(freq))
+
+nothing.on.labeled.smp <- nothing.on.labeled %>%
+  mutate(freq.x = round(freq.x/100)+1)
+
+sampleoct22 <- vector(mode = "list", length = nrow(nothing.on.labeled))
+for (i in seq_along(sampleoct22)) {
+  sampleoct22[[i]] <- df.unlabeled %>%
+    filter(str_detect(translatedText,nothing.on.labeled$name[i])) %>%
+    select(id, first_appeared) %>%
+    arrange(desc(first_appeared)) %>%
+    slice(1:nothing.on.labeled.smp$freq.x[[i]]) %>% ##take number of dish from latest dish (we low on new name dish)
+    select(id)
+}
+
+sampleoct22 <- do.call(rbind, sampleoct22)
+sampleoct22 <- unique(sampleoct22)
+sampleoct22.vector <- sampleoct22$id
+
+## add more label for pattern that are not available in training (see steps on appendix)
+## our pattern
+new.labeled.22oct <- df.unlabeled %>%
+  filter(id %in% sampleoct22.vector)
+write.csv(new.labeled.22oct, "newlabeled22oct.csv")
+newlabeled22oct <- read_csv("newlabeled22oct.csv")
+newlabeled22oct <- newlabeled22oct[,-1] 
+which(is.na(newlabeled22oct$seafood_yn))
+newlabeled22oct <- newlabeled22oct[-598,] 
+df.labeled <- rbind(df.labeled, newlabeled22oct)
+
+df.unlabeled <- df.unlabeled %>%
+  anti_join(newlabeled22oct, by = "id")
+dim(df.unlabeled)
+df.all <- rbind(df.unlabeled, df.labeled)
+
+## check
+nrow(df.all) == nrow(df)
+
+## save 
+write_csv(df.all, file = "dfalltranslated.csv")
+write_csv(df.labeled, file = "dflabeledtranslated.csv")
+write_csv(df.unlabeled, file = "dfunlabeledtranslated.csv")
+rm(list = ls())
+```
