@@ -115,8 +115,35 @@ train.dfm.noun <- data.frame(label=as.factor(train$seafood_yn),
                         dfm.train.Noun) %>%
   select(-doc_id)
 head(train.dfm.noun)
-save(train.dfm.noun, file = "traindfm.Rdata")
+save(train.dfm.noun, file = "traindfmnoun.Rdata")
+save(train.dfm.allword, file = "traindfmall.Rdata")
 ```
+
+### preprocess training undersampling
+```{r}
+## annotate dish name
+#create a corpus
+corpus <- corpus(trainunder$translatedText) 
+
+#create document frequency matrix and clean the corpus
+dfm.train.under <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+
+##setup feature dataframe with label
+train.dfm.under <- data.frame(label=as.factor(trainunder$seafood_yn),
+                        digit4 = trainunder$digit4,
+                        dfm.train.under) %>%
+  select(-doc_id)
+save(train.dfm.under, file = "traindfmunder.Rdata")
+```
+
 ### preprocess training set using all words then convert it to 300 variable using svd
 ```{r}
 
@@ -371,30 +398,6 @@ best.accuracy <- function(result, testdf) {
 # we use the value of k-nearest neighbour in the data set. k indicate the number of neighbour we want to 
 # use in the model. The distance between neighbour is determined using Euclidean Distance
 
-
-################# use 10-fold cv ######################
-# use caret package to make stratified 10-fold cross validation repeated
-# # create index to 10-fold cv, use ROC as a model selection criteria
-# cv.control <- trainControl(method = "cv", number = 10, 
-#                            summaryFunction = twoClassSummary,
-#                            classProbs = TRUE)
-# 
-# # time the code execution
-# start.time <- Sys.time()
-# 
-# # knnFit <- train(label ~ ., data = train.svd, 
-# #                 method = "knn", 
-# #                 trControl = cv.control, 
-# #                 preProcess = c("center","scale"), 
-# #                 tuneLength = 10)
-# 
-# total.time <- Sys.time() - start.time
-## Took about 3 hours to train the model
-# ## save(knnFit,file = "knnFit.Rdata")
-# load("knnFit.Rdata")
-# knnFit
-# plot(knnFit)
-
 ##################### using simple test and training ##################
 
 ################ using dfm version of data ###########
@@ -643,6 +646,14 @@ text(tree.2pruned)
 label.predict.pruned2 <-  predict(tree.2pruned, test.dfm.allword, type="class" )
 confusionMatrix(label.predict.pruned2,test.dfm.allword$label)
 
+
+## undersampling training
+tree.3 <- tree( label ~ ., train.dfm.under)
+label.predict3 <-  predict( tree.3, test.dfm.allword, type="class" )
+
+confusionMatrix(label.predict3,test.dfm.allword$label)
+dim(train.dfm.under)
+dim(train.dfm.allword)
 ```
 
 
