@@ -18,7 +18,7 @@ library(class)
 
 ## Load dataset
 ```{r}
-df.labeled <- read_csv("dflabeledtranslated.csv")
+df.labeled <- read_csv("dflabeledtranslated_edited.csv")
 df.labeled <- df.labeled %>%
   select(name, translatedText, seafood_yn)
 head(df.labeled)
@@ -36,6 +36,17 @@ df.labeled <- df.labeled %>%
   mutate(popseafood = ifelse(str_detect(translatedText,popularseafoodwords),1,0),
          digit4 = ifelse(str_detect(translatedText,"[:digit:]{4}"),1,0))
 head(df.labeled)
+
+df.labeled %>%
+  ggplot(aes(seafood_yn, popseafood)) + geom_jitter() + theme_bw()
+df.labeled %>%
+  ggplot(aes(seafood_yn, digit4)) + geom_jitter() + theme_bw()
+
+table(df.labeled$seafood_yn, df.labeled$popseafood)
+table(df.labeled$seafood_yn, df.labeled$digit4)
+
+df.labeled %>%
+  filter(seafood_yn == 0 & popseafood ==1) ##some are potentially wrong label
 ```
 
 # create training and test
@@ -60,11 +71,9 @@ save(train, file = "train.Rdata")
 save(test, file = "test.Rdata")
 table(train$seafood_yn)
 
-
 ###### create training considering class imbalance with undersampling method #########
 library(ROSE)
-trainunder <- ovun.sample(seafood_yn~., data = train, method = "under")$data
-
+trainunder <- ovun.sample(seafood_yn~., data = train, method = "under", seed = 1)$data
 ```
 
 
@@ -117,6 +126,9 @@ train.dfm.noun <- data.frame(label=as.factor(train$seafood_yn),
 head(train.dfm.noun)
 save(train.dfm.noun, file = "traindfmnoun.Rdata")
 save(train.dfm.allword, file = "traindfmall.Rdata")
+
+
+  
 ```
 
 ### preprocess training undersampling
@@ -142,6 +154,7 @@ train.dfm.under <- data.frame(label=as.factor(trainunder$seafood_yn),
                         dfm.train.under) %>%
   select(-doc_id)
 save(train.dfm.under, file = "traindfmunder.Rdata")
+load("traindfmunder.Rdata")
 ```
 
 ### preprocess training set using all words then convert it to 300 variable using svd
@@ -150,83 +163,7 @@ save(train.dfm.under, file = "traindfmunder.Rdata")
 ### we start our process from dfm.train (a table that still have all corpus)
 dim(dfm.train)
 
-############## make TF-IDF version of data ##################
-## make tf function
-term.frequency <- function(row){
-  row/sum(row)
-}
-
-## make function to calculate IDF
-inverse.doc.freq <- function(col) {
-  corpus.size <- length(col)
-  doc.count <- length(which(col>0))
-  log10(corpus.size/doc.count)
-}
-
-## make function to calculate tf/idf
-
-tf.idf <- function(tf,idf) {
-  tf*idf
-}
-
-## make tf matrix transformation 
-dfm.train.tf <- apply(dfm.train, 1, term.frequency)
-dim(dfm.train)
-
-## make idf . NOTe: This IDF will be used again later in test dataset
-dfm.train.idf <- apply(dfm.train, 2, inverse.doc.freq)
-
-## make tf-idf matrix 
-dfm.train.tfidf <- apply(dfm.train.tf, 2, tf.idf, idf = dfm.train.idf)
-dim(dfm.train.tfidf)
-
-## transpose t-idf matrix
-dfm.train.tfidf <- t(dfm.train.tfidf)
-dim(dfm.train.tfidf)
-
-## check incomplete cases -- it is possible that with our preprocessing some dish 
-## have name that being removed
-incomplete.cases <- which(!complete.cases(dfm.train.tfidf))
-train$translatedText[incomplete.cases]
-
-## fix it
-dfm.train.tfidf[incomplete.cases,] <- rep(0.0, ncol(dfm.train.tfidf))
-
-################ end of tf-idf ##################
-
-
 ########## Singular value decomposition ##########
-
-## record start time
-start.time <- Sys.time()
-
-### perform SVD to decrease dimentionality  to 300 using package irlba
-train.irlba <- irlba(t(dfm.train.tfidf), nv = 300, maxit = 600)
-
-## total time ~12 minutes
-total.time <- Sys.time() - start.time 
-
-
-## save svd value for test data
-sigma.inverse <- 1/train.irlba$d
-u.transpose <- t(train.irlba$u)
-
-##setup feature dataframe with label
-
-train.svd <- data.frame(label=as.factor(train$seafood_yn), 
-                        popseafood = train$popseafood, 
-                        digit4 = train$digit4,
-                        train.irlba$v)
-dim(train.svd)
-
-save(train.svd,file = "trainingsvd.Rdata")
-##load("trainingsvd.Rdata")
-head(train.svd)
-
-
-#################### svd part II ##########3
-## we make another dataset with singular value decomposition 
-## however, this time we did not weighting data based on tf-idf function
 
 ## record start time
 start.time <- Sys.time()
@@ -243,21 +180,20 @@ sigma.inverse.2 <- 1/train.irlba.2$d
 u.transpose.2 <- t(train.irlba.2$u)
 ##setup feature dataframe with label
 
-train.svd.2 <- data.frame(label=as.factor(train$seafood_yn), 
+train.svd <- data.frame(label=as.factor(train$seafood_yn), 
                         popseafood = train$popseafood, 
                         digit4 = train$digit4,
                         train.irlba.2$v)
-dim(train.svd)
 
-save(train.svd.2,file = "trainingsvd2.Rdata")
-##load("trainingsvd.Rdata")
-head(train.svd.2)
+save(train.svd,file = "trainingsvd.Rdata")
+load("trainingsvd.Rdata")
+head(train.svd)
 
 ################# end of SVD ###################################
 ```
 
 ## preprocessing test
-### preprocess test set using only noun as data frame
+### preprocess test set
 ```{r}
 
 ############## choosing only Noun ##############
@@ -289,12 +225,11 @@ test.dfm.allword <- data.frame(label=as.factor(test$seafood_yn),
   select(-doc_id)
 dim(test.dfm.allword)
 
-test.dfm <- data.frame(label=as.factor(test$seafood_yn),
+test.dfm.Noun <- data.frame(label=as.factor(test$seafood_yn),
                        digit4 = test$digit4, 
                        dfm.test.Noun) %>%
   select(-doc_id)
 
-save(test.dfm, file = "testdfm.Rdata")
 ```
 
 ### preprocess test set using all words then convert it to 300 variable using svd
@@ -306,61 +241,21 @@ dfm.test <- dfm_select(dfm.test, pattern = dfm.train)
 dfm.test.matrix <- as.matrix(dfm.test)
 dim(dfm.test)
 
-############## make TF-IDF version of data ##################
-
-## make tf matrix transformation 
-dfm.test.tf <- apply(dfm.test.matrix, 1, term.frequency)
-
-
-## make tf-idf matrix using idf from training data, 
-## because we expect that any new document that comes in the future has to
-## correspondent with our main corpus (training data)
-dfm.test.tfidf <- apply(dfm.test.tf, 2, tf.idf, idf = dfm.train.idf)
-dim(dfm.test.tfidf)
-
-## transpose t-idf matrix
-dfm.test.tfidf <- t(dfm.test.tfidf)
-dim(dfm.test.tfidf)
-
-## check incomplete cases -- it is possible that with our preprocessing some dish 
-## have name that being removed
-incomplete.cases <- which(!complete.cases(dfm.test.tfidf))
-
-## fix it
-dfm.test.tfidf[incomplete.cases,] <- rep(0.0, ncol(dfm.test.tfidf))
-
-################ end of tf-idf ##################
-
-
 ########## Singular value decomposition ##########
 
-test.svd <- t(sigma.inverse*u.transpose %*% t(dfm.test.tfidf))
+test.svd <- t(sigma.inverse.2*u.transpose.2 %*% t(as.matrix(dfm.test)))
 
-############### setup feature dataframe with label   #####################
+############### setup feature dataframe with label   ##########
 test.svd <- data.frame(label=as.factor(test$seafood_yn), 
                        popseafood = test$popseafood, 
                        digit4 = test$digit4, 
                        test.svd)
-head(test.svd)
+dim(test.svd)
 
 save(test.svd,file = "testsvd.Rdata")
 load("testsvd.Rdata")
 
-########## Singular value decomposition without wighting ##########
-
-test.svd.2 <- t(sigma.inverse.2*u.transpose.2 %*% t(as.matrix(dfm.test)))
-
-############### setup feature dataframe with label   ##########
-test.svd.2 <- data.frame(label=as.factor(test$seafood_yn), 
-                       popseafood = test$popseafood, 
-                       digit4 = test$digit4, 
-                       test.svd.2)
-dim(test.svd.2)
-
-save(test.svd.2,file = "testsvd2.Rdata")
-load("testsvd2.Rdata")
-
-head(test.svd.2)
+head(test.svd)
 
 ################# end of SVD ###################################
 ```
@@ -390,13 +285,12 @@ best.accuracy <- function(result, testdf) {
 
 
 ## use KNN
-
+KNN is a non-parameteric classification method where in order to predict a response class
+we use the value of k-nearest neighbour in the data set. k indicate the number of neighbour we want to
+use in the model. The distance between neighbour is determined using Euclidean Distance
 ```{r}
-######### knn #########################
+########################### knn #########################
 
-# KNN is a non-parameteric classification method where in order to predict a response class
-# we use the value of k-nearest neighbour in the data set. k indicate the number of neighbour we want to 
-# use in the model. The distance between neighbour is determined using Euclidean Distance
 
 ##################### using simple test and training ##################
 
@@ -404,7 +298,6 @@ best.accuracy <- function(result, testdf) {
 
 # we can not use this type of data using KNN, because the alue between observation is 
 # too much similar, there will be too many ties
-
 
 ########### ends of model using dfm version of data ##################
 
@@ -427,27 +320,6 @@ test.predicted.actual.knnsvd <- data.frame(name = test$name,
                          predicted = knn.result.svd[[1]]) ## best threshold is k = 5
 test.predicted.actual.knnsvd %>%
   filter(actual != predicted)
-
-
-################ using svd without weighting of data ###########
-knn.result.svd.2 <- vector(mode = "list",length=3)
-tune.knn <- c(5,25,50,100,150) #low k might be overfit models
-
-set.seed(1234)
-for (i in seq_along(tune.knn)) {
-  knn.result.svd.2[[i]] <- knn(train.svd.2[,-1],test.svd.2[,-1],train.svd.2$label, k = tune.knn[i])
-}
-save(knn.result.svd.2, file = "knnresultsvd2.Rdata")
-best.accuracy(knn.result.svd.2,testdf = test.svd.2)
-system("say just finished")
-
-test.predicted.actual.knnsvd.2 <- data.frame(name = test$name,
-                         translate = test$translatedText,
-                         actual = test$seafood_yn,
-                         predicted = knn.result.svd.2[[1]]) ## best threshold is k = 5
-test.predicted.actual.knnsvd.2 %>%
-  filter(actual != predicted)
-########### ends of model using svd version of data ##################
 ########### ends of model using svd version of data ##################
 ```
 
@@ -465,6 +337,7 @@ logfit.svd <- glm(label ~ ., data = train.svd, family=binomial)
 total.time.train.log.svd <- Sys.time() - start.time
 
 ## Took less than a minute to return a model
+save(logfit.svd, file = "logfit.svd.Rdata")
 total.time.train.log.svd
 
 ##################### predict with test ##################
@@ -493,64 +366,24 @@ test.predicted.actual.logsvd <- data.frame(name = test$name,
 test.predicted.actual.logsvd %>%
   filter(actual != predicted)
 
-
-############# using svd without weighting of data #########
-# time the code execution
-start.time <- Sys.time()
-
-logfit.svd.2 <- glm(label ~ ., data = train.svd.2, family=binomial)
-
-total.time.train.log.svd.2 <- Sys.time() - start.time
-
-## Took less than a minute to return a model
-total.time.train.log.svd.2
-
-##################### predict with test ##################
-# predict
-logpredict.2 <- predict(logfit.svd.2, newdata = test.svd.2,  type = "response")
-log.result.svd.2 <- vector(mode = "list",length=100)
-
-## generate list with different threshold
-for (i in 1:100) {
-  log.result.svd.2[[i]] <- 1*(logpredict.2 > i/100 )
-}
-
-## determine best model
-best.accuracy(log.result.svd.2, testdf = test.svd.2)
-system("say just finished")
-
-
-### examine the result 
-library(broom)
-coef.table.log.svd.2 <- tidy(logfit.svd.2)
-coef.table.log.svd.2
-test.predicted.actual.logsvd.2 <- data.frame(name = test$name,
-                         translate = test$translatedText,
-                         actual = test$seafood_yn,
-                         predicted = log.result.svd.2[[29]]) ## best threshold is 0.29
-actualvpredicted <- test.predicted.actual.logsvd.2 %>%
-  filter(actual != predicted)
-write_csv(actualvpredicted, "actualvpredicted_misclassified.csv")
-
-
 ############# using dfm with only Noun version of data #########
 # time the code execution
 
 
-logfit.noun <- glm(label ~ ., data = train.dfm, family=binomial)
+logfit.noun <- glm(label ~ ., data = train.dfm.noun, family=binomial)
 ## there are multicollinerity problem in dataset
 coef.table.log.noun <- tidy(logfit.noun)
 coef.sig <- coef.table.log.noun %>%
   filter(p.value < 0.1)
 term.sig <- paste(coef.sig$term[-1] ,collapse = "+")
-logfit.noun <- glm(paste("label~", term.sig, sep = ""), data = train.dfm, family=binomial)
-
+logfit.noun <- glm(paste("label~", term.sig, sep = ""), data = train.dfm.noun, family=binomial)
+save(logfit.noun, file = "logfit.noun.Rdata")
 ## Took less than a minute to return a model
 # total.time.train.log.noun
 
 ##################### predict with test ##################
 # predict
-logpredict <- predict(logfit.noun, newdata = test.dfm,  type = "response")
+logpredict <- predict(logfit.noun, newdata = test.dfm.Noun,  type = "response")
 
 log.result.noun <- vector(mode = "list",length=100)
 
@@ -560,7 +393,7 @@ for (i in 1:100) {
 }
 
 ## determine best model
-best.accuracy(log.result.noun, testdf = test.dfm)
+best.accuracy(log.result.noun, testdf = test.dfm.Noun)
 system("say just finished")
 
 
@@ -568,23 +401,22 @@ test.predicted.actual.lognoun <- data.frame(name = test$name,
                          translate = test$translatedText,
                          actual = test$seafood_yn,
                          prob = logpredict,
-                         predicted = log.result.noun[[34]]) ## best threshold is 0.27 #
+                         predicted = log.result.noun[[1]]) ## best threshold is 0.01 #
 test.predicted.actual.lognoun %>%
   filter(actual != predicted)
 
-############# using dfm with all words available to train of data #########
+############# using dfm with all words available to train of data with undersampling #########
 # time the code execution
 start.time <- Sys.time()
 
-logfit.allword <- glm(label ~ ., data = train.dfm.allword, family=binomial)
+logfit.allword <- glm(label ~ ., data = train.dfm.under, family=binomial)
 coef.table.log.allword <- tidy(logfit.allword)
 coef.sig <- coef.table.log.allword %>%
   filter(p.value < 0.1)
 term.sig <- paste(coef.sig$term[-1] ,collapse = "+")
-logfit.allword <- glm(paste("label~", term.sig, sep = ""), data = train.dfm.allword, family=binomial)
-
+logfit.allword <- glm(paste("label~", term.sig, sep = ""), data = train.dfm.under, family=binomial)
+save(logfit.allword, file = "logfitallword.Rdata")
 total.time.train.log.allword <- Sys.time() - start.time
-
 ## Took less than a minute to return a model
 total.time.train.log.allword
 
@@ -616,9 +448,9 @@ test.predicted.actual.logallword %>%
 ## TREEE
 ```{r}
 library(tree)
-tree.1 <- tree( label ~ ., train.dfm)
-label.predict <-  predict( tree.1, test.dfm, type="class" )
-confusionMatrix(label.predict,test.dfm$label)
+tree.1 <- tree( label ~ ., train.dfm.noun)
+label.predict <-  predict( tree.1, test.dfm.Noun, type="class" )
+confusionMatrix(label.predict,test.dfm.Noun$label)
 
 ##prune
 cv <- cv.tree( tree.1, FUN = prune.misclass )
@@ -626,9 +458,9 @@ plot(cv)
 which.min(cv$dev)
 
 tree.1pruned <- prune.misclass( tree.1, best=24 )
-label.predict.pruned <-  predict(tree.1pruned, test.dfm, type="class" )
-confusionMatrix(label.predict.pruned,test.dfm$label)
-
+label.predict.pruned <-  predict(tree.1pruned, test.dfm.Noun, type="class" )
+confusionMatrix(label.predict.pruned,test.dfm.Noun$label)
+save(tree.1, file="tree1.Rdata")
 
 ## all word
 tree.2 <- tree( label ~ ., train.dfm.allword)
@@ -645,17 +477,125 @@ plot(tree.2pruned)
 text(tree.2pruned)
 label.predict.pruned2 <-  predict(tree.2pruned, test.dfm.allword, type="class" )
 confusionMatrix(label.predict.pruned2,test.dfm.allword$label)
+save(tree.2, file="tree2.Rdata")
 
-
-## undersampling training
+#####  undersampling training
 tree.3 <- tree( label ~ ., train.dfm.under)
 label.predict3 <-  predict( tree.3, test.dfm.allword, type="class" )
 
 confusionMatrix(label.predict3,test.dfm.allword$label)
-dim(train.dfm.under)
-dim(train.dfm.allword)
+save(tree.3, file="tree1.Rdata")
 ```
 
+
+## SVM
+```{r}
+library(e1071)
+svm <-  svm( label ~ ., data=train.dfm.noun, kernel="linear")
+summary(svm)
+labelpredictsvm <-predict(svm,test.dfm.Noun)
+length(labelpredictsvm)
+nrow(test.dfm)
+confusionMatrix(labelpredictsvm,test.dfm.Noun$label)
+save(svm,file = "svmundernoun.Rdata")
+
+svm.2 <-  svm( label ~ ., data=train.dfm.under, kernel="linear")
+labelpredictsvm2 <-predict(svm.2,test.dfm.allword)
+
+confusionMatrix(labelpredictsvm2,test.dfm.allword$label)
+save(svm.2,file = "svmunder.Rdata")
+
+test.predicted.actual.svm2 <- data.frame(name = test$name,
+                         translate = test$translatedText,
+                         actual = test$seafood_yn,
+                         predicted = labelpredictsvm2) 
+test.predicted.actual.svm2 %>%
+  filter(actual != predicted)
+```
+
+#random forest
+```{r}
+library(randomForest)
+library(doSNOW)
+
+cl <- makeCluster(2)
+registerDoSNOW(cl)
+
+# time the code execution
+start.time <- Sys.time()
+
+
+rf <-  randomForest(label ~ ., data=train.dfm.under) 
+
+
+total.time.rf <- Sys.time() - start.time
+
+stopCluster(cl)
+
+labelpredictrf.a <-predict(rf,test.dfm.allword)
+confusionMatrix(labelpredictrf.a,test.dfm.allword$label)
+save(rf,file = "rfunderCorrected.Rdata")
+load("rfunder.Rdata")
+rf
+summary(rf)
+
+labelpredictrf <-predict(rf,test.dfm.allword, type = "vote")
+
+length(test.dfm.allword$label)
+rf.result <- vector(mode = "list",length=100)
+
+## generate list with different threshold
+for (i in 1:100) {
+  rf.result[[i]] <- 1*(labelpredictrf[,2] > i/100 )
+}
+
+
+best.accuracy(rf.result, testdf = test.dfm.allword)
+
+
+test.predicted.actual.rf <- data.frame(name = test$name,
+                         translate = test$translatedText,
+                         actual = test$seafood_yn,
+                         predicted = rf.result[[76]]) 
+test.predicted.actual.rf %>%
+  filter(actual != predicted)
+
+
+```
+
+## result
+```{r}
+
+#table
+result <- rbind(
+  data.frame(mode = "KNN", training = "decomposition",best.accuracy(knn.result.svd,testdf = test.svd)$best_confusion.matric$table), ## knn with variable decomposition
+  data.frame(mode = "logistic reg", training = "decomposition", best.accuracy(log.result.svd, testdf = test.svd)$best_confusion.matric$table), ## logistic regressin with variable decomposition
+  data.frame(mode = "logistic reg", training = "noun", best.accuracy(log.result.noun, testdf = test.dfm.Noun)$best_confusion.matric$table), ## logistic regressin with noun only
+  data.frame(mode = "logistic reg", training = "under", best.accuracy(log.result.allword, testdf = test.dfm.allword)$best_confusion.matric$table), ## log reg with all words undersample
+  data.frame(mode = "Decision tree", training = "noun", confusionMatrix(label.predict,test.dfm.Noun$label)$table),  ##decision tree with noun
+  data.frame(mode = "Decision tree",training = "all words", confusionMatrix(label.predict2,test.dfm.allword$label)$table), ##decision tree with all word 
+  data.frame(mode = "Decision tree", training = "under", confusionMatrix(label.predict3,test.dfm.allword$label)$table),  ##decision tree with all word undersample
+  data.frame(mode = "svm", training = "noun", confusionMatrix(labelpredictsvm,test.dfm.Noun$label)$table),  ##svm with only noun
+  data.frame(mode = "svm", training = "under", confusionMatrix(labelpredictsvm2,test.dfm.allword$label)$table), ##svm with allword undersample
+  data.frame(mode = "random forest", training = "under", best.accuracy(rf.result, testdf = test.dfm.allword)$best_confusion.matric$table)
+)#random forest with all word undersample
+
+
+result %>%
+  group_by(mode, training, Reference) %>%
+  mutate(sumreference = ifelse(Reference == 0, sum(Freq[Reference == 0]),sum(Freq[Reference == 1]) )) %>%
+  mutate(rate = Freq/sumreference) %>%
+  arrange(mode,training, Prediction)
+
+result%>%
+  filter(Prediction != Reference) %>%
+  ggplot(aes(training,Freq, fill= Prediction)) + geom_col() + facet_wrap(~mode)
+
+result%>%
+  filter(Prediction != Reference) %>%
+  ggplot(aes(Reference, Freq, fill= Prediction)) + geom_col() + facet_grid(mode~training) + theme_bw()
+  
+```
 
 ## 10 fold cv
 ```{r}
