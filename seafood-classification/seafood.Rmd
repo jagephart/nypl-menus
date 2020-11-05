@@ -556,7 +556,7 @@ best.accuracy(rf.result, testdf = test.dfm.allword)
 test.predicted.actual.rf <- data.frame(name = test$name,
                          translate = test$translatedText,
                          actual = test$seafood_yn,
-                         predicted = rf.result[[76]]) 
+                         predicted = rf.result[[74]]) 
 test.predicted.actual.rf %>%
   filter(actual != predicted)
 
@@ -595,6 +595,55 @@ result%>%
   filter(Prediction != Reference) %>%
   ggplot(aes(Reference, Freq, fill= Prediction)) + geom_col() + facet_grid(mode~training) + theme_bw()
   
+```
+
+```{r}
+unlabeled <- read_csv("dfunlabeledtranslated.csv")
+
+test.unlabeled <- sample_n(unlabeled, 1000, seed = 1)
+head(test.unlabeled)
+
+test.unlabeled <- test.unlabeled %>%
+  mutate(digit4 = ifelse(str_detect(translatedText,"[:digit:]{4}"),1,0))
+## preprocessing unlabeled
+nrow(test.unlabeled)
+#create a corpus
+corpus <- corpus(test.unlabeled$translatedText) 
+
+#create document frequency matrix with verb
+dfm.unlabeled <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+
+dim(dfm.unlabeled)
+
+dfm.unlabeled <- dfm_select(dfm.unlabeled, pattern = dfm.train.under)
+
+dfm.unlabeled <- data.frame(label=as.factor(0),
+                            digit4 = test.unlabeled$digit4,
+                        dfm.unlabeled) %>%
+  select(-doc_id)
+
+dim(dfm.unlabeled)
+labelpredict.unlabeled <-predict(rf,dfm.unlabeled, type = "vote")
+rf.result <- vector(mode = "list",length=100)
+rf.result <- 1*(labelpredict.unlabeled[,2] > 74/100 )
+test.unlabeled$predicted <- rf.result
+test.unlabeled%>%
+  select(translatedText, predicted) %>%
+  write_csv(file = "predictedunlabeled.csv")
+table(test.unlabeled$predicted)
+unlabeled.predicted <- read_csv("predictedunlabeled.csv")
+confusionMatrix(as.factor(unlabeled.predicted$predicted), as.factor(unlabeled.predicted$actual.manual))
+unlabeled.predicted %>%
+  filter( predicted != actual.manual)
+
 ```
 
 ## 10 fold cv
@@ -654,39 +703,4 @@ loss = function(Y,p){ return( mean( (Y==1 & p < 0.35) | (Y==0 & p >= 0.35) ) ) }
 set.seed(1)
 cv <-  cv.glm(labeled.svd, glm, loss, K = 10) 
 cv$delta
-```
-
-
-
-# make models use random forest 
-## use R default setting - Error: protect(): protection stack overflow 
-## - try to tweak default R setting: Error: vector memory exhausted (limit reached?)
-## solution to try: use machine with bigger memory
-```{r}
-# set.seed(1234)
-# 
-# cv.folds <- createMultiFolds(train$seafood_yn, k = 10, times = 1)
-# cv.control <- trainControl(method = "repeatedcv", number = 10,
-#                            repeats = 1, index = cv.folds)
-# 
-# cl <- DoSNOW::makeCluster(20)
-# registerDoSNOW(cl)
-# 
-# # time the code execution
-# start.time <- Sys.time()
-# 
-# # build decision tree - rpart
-# rpart.cv.1 <- train(label~.,data = train.svd, 
-#                     method = "rf",
-#                     trcontrol = cv.control,
-#                     tuneLength = 10)
-# 
-# total.time <- Sys.time() - start.time
-# 
-# DoSNOW::stopCluster(cl)
-load("trainingrf.Rdata")
-rf.cv.1
-# rfpredict <- predict(rf.cv.1, newdata = test.svd)
-load("rfpredict.rdata")
-confusionMatrix(rfpredict, test.svd$label)
 ```
