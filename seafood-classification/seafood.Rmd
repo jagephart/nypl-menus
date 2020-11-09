@@ -69,6 +69,7 @@ prop.table(table(test$seafood_yn))
 
 save(train, file = "train.Rdata")
 save(test, file = "test.Rdata")
+load("test.Rdata")
 table(train$seafood_yn)
 
 ###### create training considering class imbalance with undersampling method #########
@@ -126,8 +127,6 @@ train.dfm.noun <- data.frame(label=as.factor(train$seafood_yn),
 head(train.dfm.noun)
 save(train.dfm.noun, file = "traindfmnoun.Rdata")
 save(train.dfm.allword, file = "traindfmall.Rdata")
-
-
   
 ```
 
@@ -646,13 +645,19 @@ unlabeled.predicted %>%
 
 ```
 
-## 10 fold cv
+## predict all
 ```{r}
-#create a corpus
-corpus <- corpus(df.labeled$translatedText) 
+load("rfunderCorrected.Rdata")
+unlabeled <- read_csv("dfunlabeledtranslated.csv")
 
-#create document frequency matrix and clean the corpus
-dfm.labeled <- dfm(corpus, 
+unlabeled <- unlabeled %>%
+  mutate(digit4 = ifelse(str_detect(translatedText,"[:digit:]{4}"),1,0))
+## preprocessing unlabeled
+#create a corpus
+corpus <- corpus(unlabeled$translatedText) 
+
+#create document frequency matrix with verb
+dfm.unlabeled <- dfm(corpus, 
              tolower=TRUE,  
              remove_punct =TRUE, 
              remove_numbers=TRUE,
@@ -662,45 +667,70 @@ dfm.labeled <- dfm(corpus,
              stem=TRUE, 
              verbose=TRUE)
 
-## record start time
-start.time <- Sys.time()
-
-### perform SVD to decrease dimentionality  to 300 using package irlba
-labeled.irlba <- irlba(t(dfm.labeled), nv = 300, maxit = 600)
-
-## total time ~12 minutes
-total.time <- Sys.time() - start.time 
+dfm.unlabeled <- dfm_select(dfm.unlabeled, pattern = dfm.train.under)
 
 
-## save svd value for test data
-sigma.inverse.l <- 1/labeled.irlba$d
-u.transpose.l <- t(labeled.irlba$u)
 
-##setup feature dataframe with label
+dim(dfm.unlabeled)
+labelpredict.unlabeled <- 1:nrow(dfm.unlabeled)
+length(labelpredict.unlabeled)
 
-labeled.svd <- data.frame(label=as.factor(df.labeled$seafood_yn), 
-                        popseafood = df.labeled$popseafood, 
-                        digit4 = df.labeled$digit4,
-                        labeled.irlba$v)
-library(boot)
-glm <- glm(label~., data = labeled.svd, family = "binomial")
-##################### predict with test ##################
-# predict
-logpredict.cv <- predict(glm, newdata = labeled.svd,  type = "response")
-log.result.cv <- vector(mode = "list",length=100)
+## using loop because wa can't do all in one (memory exhaust)
+for (i in 1:2000) {
+  data <- data.frame(label=as.factor(0),
+                            digit4 = unlabeled$digit4[[i]],
+                        dfm.unlabeled[i,]) %>%
+  select(-doc_id)
+  labelpredict <-predict(rf,data, type = "vote")
+  rf.result <- 1*(labelpredict[,2] > 74/100 )
+  labelpredict.unlabeled[[i]] <- rf.result
+  print(i)
+  }
 
-## generate list with different threshold
-for (i in 1:100) {
-  log.result.cv[[i]] <- 1*(logpredict.cv > i/100 )
+
+labelpredict.unlabeled <- labelpredict.unlabeled[1:2000]
+unlabeled$seafood_yn[1:2000] <- labelpredict.unlabeled
+df.year <- unlabeled[1:2000,] %>%
+  select(times_appeared, first_appeared, last_appeared, seafood_yn, translatedText)
+
+df.year <- df.year %>%
+  filter(times_appeared>0)
+data <- vector(mode = "list", length = nrow(df.year))
+for (i in seq_along(data)) {
+  name.vec <- rep(df.year$translatedText[i], df.year$times_appeared[i])
+year.vec <- if (df.year$times_appeared[i] == 1) {
+  c(df.year$first_appeared[i])
+  } else if (df.year$times_appeared[i] == 2) {
+  c(df.year$first_appeared[i], df.year$last_appeared[i])
+    } else {
+  c(df.year$first_appeared[i], df.year$last_appeared[i],
+    sample(df.year$first_appeared[i]:df.year$last_appeared[i], df.year$times_appeared[i]-2, replace = TRUE)
+  )
+    } 
+data[[i]] <- data.frame (translatedText = name.vec,
+                    year = year.vec)
 }
 
-## determine best model
-best.accuracy(log.result.cv, testdf = labeled.svd)
-## $max_correct_predicted_rate [1] 0.9805837
+data <- do.call(rbind, data)
 
-## evaluate using cv
-loss = function(Y,p){ return( mean( (Y==1 & p < 0.35) | (Y==0 & p >= 0.35) ) ) }
-set.seed(1)
-cv <-  cv.glm(labeled.svd, glm, loss, K = 10) 
-cv$delta
+data <- data %>%
+  left_join(df.year)
+
+data %>%
+  filter(seafood_yn == 1) %>%
+  mutate(oyster = str_detect(translatedText, "oyster|Oyster")*1) %>%
+  group_by(year) %>%
+  summarise(n = sum(seafood_yn), 
+            oyster = sum(oyster)) %>%
+  filter(year > 1900) %>%
+  gather(n:oyster, key= key, value = val) %>%
+  ggplot(aes(year, val, color=key)) + geom_line() + theme_classic()
+
+              
+
 ```
+## visual
+```{r}
+unlabeled.predicted
+```
+
