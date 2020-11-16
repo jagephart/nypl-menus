@@ -7,7 +7,9 @@ output: pdf_document
 
 ```{r message=FALSE}
 #library used
-library(tidyverse)
+library(tidyverse) ## for wrangling and tidying data
+library(ROSE) ## to genereate undersample 
+library(udpipe) ## to annotate text
 library(caret)
 library(quanteda)
 library(doSNOW) #run model to run in each core
@@ -16,16 +18,44 @@ library(irlba)
 library(class)
 ```
 
-## Load dataset
+# Overview on Dataset
+dataset consist of 31,829 obs and 11 variables.
 ```{r}
 df.labeled <- read_csv("dflabeledtranslated_edited.csv")
+dim(df.labeled)
+str(df.labeled)
+```
+
+However, for this purpose of predicting feafood_yn based on the dish name, we only need dish name (original name and
+translated name) and seafood_yn. 86,53 percent of obsevartion are non seafood dishes, while only 13,46 percent are
+seafood dishes. 
+```{r}
 df.labeled <- df.labeled %>%
   select(name, translatedText, seafood_yn)
 head(df.labeled)
-prop.table(table(df.labeled$seafood_yn))
+## check if there are NA or wrong label
 unique(df.labeled$seafood_yn)
+
+## see proportions
+prop.table(table(df.labeled$seafood_yn))
 ```
-Adding, mutating variable
+Adding, mutating variable.
+Our intuition is that there are popular seafood name that will be comprises on most seafood dishes. This keywords 
+is something like "dead giveaway" to determine dishes is seafood or not. We will not use this variable in all of our 
+model, but only in a model where we might want to use PCA or SVD to our variable. 
+
+We can see from graph A that most obs that do not contains popular words are indeed not a seafood and there are only
+few of them are seafood. In the other hand, a lot of seafood dishes do not contain these popular words, indicating that
+there are vast amount of vocabulary (fish/ingredient name) on a seafood dishes.
+
+We also think that it is unusual for any dish that has a 4 digit number on it's name. Such a pattern might be popular
+on wine or other type of drinks. Because we intend to remove all of number in our dish name, we want to reserve is 
+another way, by creating new variable digit4 (1 if there is 4 digit number in dish name, or 0 if there is no 4 digit
+number in dish name).
+
+We can see from graph B, most of dishes do not contain 4 digit number. We can also see that there are only two dishes 
+that contain 4 digit number are seafood. We can see that this is a good distinction measure to determine whether the 
+dish is seafood or not.
 ```{r}
 ### adding new variable to df.labeled to improve model performance
 popularseafoodwords <- c("oyster", "Oyster", "crab","Crab", "clam", "Clam","lobster","Lobster", 
@@ -35,21 +65,19 @@ popularseafoodwords <- paste(popularseafoodwords,collapse = "|")
 df.labeled <- df.labeled %>%
   mutate(popseafood = ifelse(str_detect(translatedText,popularseafoodwords),1,0),
          digit4 = ifelse(str_detect(translatedText,"[:digit:]{4}"),1,0))
-head(df.labeled)
 
-df.labeled %>%
-  ggplot(aes(seafood_yn, popseafood)) + geom_jitter() + theme_bw()
-df.labeled %>%
-  ggplot(aes(seafood_yn, digit4)) + geom_jitter() + theme_bw()
+ggplot(df.labeled, aes(seafood_yn, popseafood)) + geom_jitter() + 
+  theme_bw() + labs(title = "Graph A Seafood dishes on popular words")
 
-table(df.labeled$seafood_yn, df.labeled$popseafood)
-table(df.labeled$seafood_yn, df.labeled$digit4)
-
-df.labeled %>%
-  filter(seafood_yn == 0 & popseafood ==1) ##some are potentially wrong label
+ggplot(df.labeled, aes(seafood_yn, digit4)) + geom_jitter() + 
+  theme_bw() + labs(title = "Graph B Seafood dishes on whether they contain 4 digit words")
 ```
 
 # create training and test
+We create training and test using 80:20 proportion. However, due to class imbalance on data set, we decide to make
+under sampling training set. This undersampling will benefit us in two ways: 1. correcting bias problem created by
+imbalanced class, and 2. Reducing the size of training sample, making it faster for some machine learning algorythm
+such as random forest.
 
 ```{r}
 ###### create training and test with the same prob #########
@@ -69,32 +97,33 @@ prop.table(table(test$seafood_yn))
 
 save(train, file = "train.Rdata")
 save(test, file = "test.Rdata")
-load("test.Rdata")
 table(train$seafood_yn)
 
 ###### create training considering class imbalance with undersampling method #########
-library(ROSE)
 trainunder <- ovun.sample(seafood_yn~., data = train, method = "under", seed = 1)$data
 ```
 
 
 ## preprocess training set
+Generally we preprocess our training set with following steps:  
+1. Make all text lowercase  
+2. Remove any punctuation, numbers, symbols, stopwords, and hyphens  
+3. Stem the text.  
+
+After all steps completed, we generate make two version of training set: one with all words, and one with only noun.
+We also preprocess undersample training using the same steps. 
+
+Furthermore, due to the dimention of training data, we make "compressed" version of training set. We use Singular Value Decomposition to reduce variable to 300 variables. This reduced dimention not only will help us increasing processing
+speed when we run the model, but also tackle multicolleniarity problem in datasets, particularly when we want to use
+Logistic Regression model.
+
+Overall we have four type of training sets:
+1. Training with all vocabulary
+2. Training with only noun
+3. Undersampled training with all vocabulary
+4. Training with SVD
 ### preprocess training set without undersampling
 ```{r}
-## annotate dish name
-
-library(udpipe)
-dl <- udpipe_download_model(language = "english")
-udmodel<- udpipe_load_model(file = dl$file_model)
-annotate <- udpipe_annotate(udmodel, train$translatedText)
-annotate <- as.data.frame(annotate)
-table(annotate$upos)
-Noun <- annotate %>%
-  filter(upos == "NOUN") %>%
-  dplyr::select(token)
-Noun <- Noun[1:nrow(Noun),]
-Noun <- unique(Noun)
-
 #create a corpus
 corpus <- corpus(train$translatedText) 
 
@@ -108,6 +137,18 @@ dfm.train <- dfm(corpus,
              remove=stopwords('english', source = "snowball"), 
              stem=TRUE, 
              verbose=TRUE)
+
+## annotate dish name, to create dictionary of noun in training set
+dl <- udpipe_download_model(language = "english")
+udmodel<- udpipe_load_model(file = dl$file_model)
+annotate <- udpipe_annotate(udmodel, train$translatedText)
+annotate <- as.data.frame(annotate)
+table(annotate$upos)
+Noun <- annotate %>%
+  filter(upos == "NOUN") %>%
+  dplyr::select(token)
+Noun <- Noun[1:nrow(Noun),]
+Noun <- unique(Noun)
 
 # take only Noun
 dfm.train.Noun <- dfm_select(dfm.train, pattern = Noun)
@@ -185,13 +226,24 @@ train.svd <- data.frame(label=as.factor(train$seafood_yn),
                         train.irlba.2$v)
 
 save(train.svd,file = "trainingsvd.Rdata")
-load("trainingsvd.Rdata")
 head(train.svd)
 
 ################# end of SVD ###################################
 ```
 
 ## preprocessing test
+In order to make a prediction in our test set, we have to follow the same steps as we did for a training set.
+Furthermore, test set must contain the same variable as a training set, so we use training set pattern for test set.
+Most importantly, we want to use the same mindset when we want to predict unlabeled data using models that is built
+under these training sets.
+
+Overall, we have 3 test set:
+1. Test with all vocabulary
+2. Test with only noun
+3. Test with SVD.
+
+We don't make test set for undersampling because we will use test with all vocabulary to validate the result for 
+undersampling training.
 ### preprocess test set
 ```{r}
 
@@ -252,19 +304,17 @@ test.svd <- data.frame(label=as.factor(test$seafood_yn),
 dim(test.svd)
 
 save(test.svd,file = "testsvd.Rdata")
-load("testsvd.Rdata")
 
 head(test.svd)
 
 ################# end of SVD ###################################
 ```
 
-## model performance evaluation
+# Model performance evaluation
+In order to evaluate models, we reate a function to determine best model. We determine best model based on accuracy
+the fuction will return the best accuracy, tuning with the best accuracy, and confusion matrix for the model with 
+the best accuracy.
 ```{r}
-## create a function to determine best model
-## we determine best model based on accuracy
-## the fuction will return the best accuracy, tuning with the best accuracy,
-## and confusion matrix for the model with the best accuracy
 best.accuracy <- function(result, testdf) {
   accuracy <- 1:length(result)
   n.test <- nrow(testdf)
@@ -281,26 +331,21 @@ best.accuracy <- function(result, testdf) {
 }
 ```
 
+# Model
+## K-nearest neighbour (KNN)
+Our first model is K-nearest neighbour (KNN). KNN is a non-parameteric classification method where
+in order to predict a response class, we use the class of k-nearest neighbour in the data set.
+k indicate the number of neighbour we want to use in the model. For example, if we choose 3 as k, we look for 
+3 nearest neighbour of our predicted observation. If two or more nearest negihbour is a seafood then we predict 
+seafood and vice versa. The distance between neighbour is determined using Euclidean Distance.
 
+For this model we only use training with SVD. We cannot unreduced training because there is too much similarity
+the value between observation (most obs will have 0 value), thus there will be too many ties.
 
-## use KNN
-KNN is a non-parameteric classification method where in order to predict a response class
-we use the value of k-nearest neighbour in the data set. k indicate the number of neighbour we want to
-use in the model. The distance between neighbour is determined using Euclidean Distance
+Our best model is using k = 5, with percent 98.05 accuracy. Model has a very high Sensitivity 0.9963
+but relatively low Specificity : 0.8857.
 ```{r}
 ########################### knn #########################
-
-
-##################### using simple test and training ##################
-
-################ using dfm version of data ###########
-
-# we can not use this type of data using KNN, because the alue between observation is 
-# too much similar, there will be too many ties
-
-########### ends of model using dfm version of data ##################
-
-
 ################ using svd version of data ###########
 knn.result.svd <- vector(mode = "list",length=3)
 tune.knn <- c(5,25,50,100,150) #low k might be overfit models
@@ -323,8 +368,12 @@ test.predicted.actual.knnsvd %>%
 ```
 
 
-## use logistic regression
+## Logistic Regression
+Our next model is Logistic Regression. We determine our prediction by measuring probability of observation
+being in a class based on coefficient of our variables.
 
+The main benefit of this model is that we can understand what words determine dishes is a seafood or not.
+Using Logistic regression, our best model is using training with only noun,with 97.67 percent accuracy.
 ```{r}
 #using simple test and training, we previously use cross validation but ends up too long
 ############# using svd version of data #########
@@ -367,8 +416,6 @@ test.predicted.actual.logsvd %>%
 
 ############# using dfm with only Noun version of data #########
 # time the code execution
-
-
 logfit.noun <- glm(label ~ ., data = train.dfm.noun, family=binomial)
 ## there are multicollinerity problem in dataset
 coef.table.log.noun <- tidy(logfit.noun)
@@ -444,21 +491,28 @@ test.predicted.actual.logallword %>%
   filter(actual != predicted)
 ```
 
-## TREEE
+## Decision Tree
+Decision tree is a very intuitive model. Based on a words we will create "branch" that will separate
+whether this is a seafood dish or notin form of node (leaves). We continue this branching untill we can no 
+longer make a new node. In prediction, the class will be determined using mode (whether there is more seafood or
+non seafood in the node).
+
+Looking at our trees, we can see that all trees create branches using popular seafood name i.e oyster, mackerel, bass, etc.
+Pruned trees version (trees wih smaller number of branches) prove to have less accuracy than full grown trees.
+
+Using Decision Tree, our best model is using Training set with all words, with 97.45 percent accuracy (Sensitivity : 0.9927  and Specificity : 0.8659).
 ```{r}
 library(tree)
 tree.1 <- tree( label ~ ., train.dfm.noun)
-label.predict <-  predict( tree.1, test.dfm.Noun, type="class" )
+label.predict <-  predict( tree.1, test.dfm.Noun, type="class")
 confusionMatrix(label.predict,test.dfm.Noun$label)
 
-##prune
+##can we prune? Answer: the biggest tree size has the highest accuracy
 cv <- cv.tree( tree.1, FUN = prune.misclass )
 plot(cv)
 which.min(cv$dev)
-
-tree.1pruned <- prune.misclass( tree.1, best=24 )
-label.predict.pruned <-  predict(tree.1pruned, test.dfm.Noun, type="class" )
-confusionMatrix(label.predict.pruned,test.dfm.Noun$label)
+plot(tree.1)
+text(tree.1)
 save(tree.1, file="tree1.Rdata")
 
 ## all word
@@ -466,35 +520,36 @@ tree.2 <- tree( label ~ ., train.dfm.allword)
 label.predict2 <-  predict( tree.2, test.dfm.allword, type="class" )
 
 confusionMatrix(label.predict2,test.dfm.allword$label)
-##prune
+## can we prune? Answer: the biggest tree size has the highest accuracy
 cv <- cv.tree( tree.2, FUN = prune.misclass )
 plot(cv)
 which.min(cv$dev)
 
-tree.2pruned <- prune.misclass( tree.2, best=28 )
-plot(tree.2pruned)
-text(tree.2pruned)
-label.predict.pruned2 <-  predict(tree.2pruned, test.dfm.allword, type="class" )
-confusionMatrix(label.predict.pruned2,test.dfm.allword$label)
+plot(tree.2)
+text(tree.2)
+
 save(tree.2, file="tree2.Rdata")
 
 #####  undersampling training
 tree.3 <- tree( label ~ ., train.dfm.under)
 label.predict3 <-  predict( tree.3, test.dfm.allword, type="class" )
 
+plot(tree.3)
+text(tree.3)
+
 confusionMatrix(label.predict3,test.dfm.allword$label)
-save(tree.3, file="tree1.Rdata")
+save(tree.3, file="tree3.Rdata")
+
 ```
 
-
 ## SVM
+SVM next week
 ```{r}
 library(e1071)
 svm <-  svm( label ~ ., data=train.dfm.noun, kernel="linear")
 summary(svm)
 labelpredictsvm <-predict(svm,test.dfm.Noun)
-length(labelpredictsvm)
-nrow(test.dfm)
+
 confusionMatrix(labelpredictsvm,test.dfm.Noun$label)
 save(svm,file = "svmundernoun.Rdata")
 
@@ -503,19 +558,19 @@ labelpredictsvm2 <-predict(svm.2,test.dfm.allword)
 
 confusionMatrix(labelpredictsvm2,test.dfm.allword$label)
 save(svm.2,file = "svmunder.Rdata")
-
-test.predicted.actual.svm2 <- data.frame(name = test$name,
-                         translate = test$translatedText,
-                         actual = test$seafood_yn,
-                         predicted = labelpredictsvm2) 
-test.predicted.actual.svm2 %>%
-  filter(actual != predicted)
 ```
 
-#random forest
+## Random Forest
+Random forest is a method where we use bagging on decision tree. In Random Ferest, we make n decision trees,
+with randomly selected m from p number of variable at the time (where p is number of all variable and m<p). 
+We then make a prediction based on the average probability of all trees that we make. This model however, 
+lose ease of interpretability from decision tree.
+
+Due to processing power needed to run random forest, we choose to use Undersampling training only.
+
+Using 500 trees, and 55 words at a time we found our forest 0.9869599 in accuracy (using loss 0.74 for 1)
 ```{r}
 library(randomForest)
-library(doSNOW)
 
 cl <- makeCluster(2)
 registerDoSNOW(cl)
@@ -534,12 +589,8 @@ stopCluster(cl)
 labelpredictrf.a <-predict(rf,test.dfm.allword)
 confusionMatrix(labelpredictrf.a,test.dfm.allword$label)
 save(rf,file = "rfunderCorrected.Rdata")
-load("rfunder.Rdata")
-rf
-summary(rf)
-
+load("rfunderCorrected.Rdata")
 labelpredictrf <-predict(rf,test.dfm.allword, type = "vote")
-
 length(test.dfm.allword$label)
 rf.result <- vector(mode = "list",length=100)
 
@@ -548,8 +599,8 @@ for (i in 1:100) {
   rf.result[[i]] <- 1*(labelpredictrf[,2] > i/100 )
 }
 
-
 best.accuracy(rf.result, testdf = test.dfm.allword)
+confusionMatrix(labelpredictrfa, test.dfm.allword$label)
 
 
 test.predicted.actual.rf <- data.frame(name = test$name,
@@ -558,6 +609,45 @@ test.predicted.actual.rf <- data.frame(name = test$name,
                          predicted = rf.result[[74]]) 
 test.predicted.actual.rf %>%
   filter(actual != predicted)
+
+
+### tune with different m 
+cl <- makeCluster(2)
+registerDoSNOW(cl)
+
+# time the code execution
+start.time <- Sys.time()
+
+tunemtry <- c(20,55,85,50,250)
+rfa <- vector(mode = "list", length=5)
+for (i in 1:5) {
+  rfa[[i]] <-  randomForest(label ~ ., data=train.dfm.under, mtry = tunemtry[[i]], ntree = 100)
+  print(i)
+}
+
+total.time.rf <- Sys.time() - start.time
+
+stopCluster(cl)
+
+rf.err <- 1:5
+for (i in 1:5) {
+  rf.err[i] <- min(rfa[[i]]$err.rate[,1])
+}
+plot(tunemtry, rf.err)
+
+rf5 <- rfa[[5]]
+labelpredictrf5 <-predict(rf5,test.dfm.allword, type = "vote")
+labelpredictrf250 <-predict(rf5,test.dfm.allword)
+
+rf.result5 <- vector(mode = "list",length=100)
+
+## generate list with different threshold
+for (i in 1:100) {
+  rf.result5[[i]] <- 1*(labelpredictrf5[,2] > i/100 )
+}
+
+best.accuracy(rf.result5, testdf = test.dfm.allword)
+confusionMatrix(rf.result5, test.dfm.allword$label)
 
 
 ```
@@ -638,26 +728,19 @@ test.unlabeled%>%
   select(translatedText, predicted) %>%
   write_csv(file = "predictedunlabeled.csv")
 table(test.unlabeled$predicted)
-unlabeled.predicted <- read_csv("predictedunlabeled.csv")
-confusionMatrix(as.factor(unlabeled.predicted$predicted), as.factor(unlabeled.predicted$actual.manual))
-unlabeled.predicted %>%
-  filter( predicted != actual.manual)
 
-```
 
-## predict all
-```{r}
-load("rfunderCorrected.Rdata")
-unlabeled <- read_csv("dfunlabeledtranslated.csv")
 
-unlabeled <- unlabeled %>%
+
+
+unlabeled.predicted.sample <- read_csv("predictedunlabeled.csv")
+unlabeled.predicted.sample <- unlabeled.predicted.sample %>%
   mutate(digit4 = ifelse(str_detect(translatedText,"[:digit:]{4}"),1,0))
-## preprocessing unlabeled
 #create a corpus
-corpus <- corpus(unlabeled$translatedText) 
+corpus <- corpus(unlabeled.predicted.sample$translatedText) 
 
 #create document frequency matrix with verb
-dfm.unlabeled <- dfm(corpus, 
+dfm.unlabeled.sample <- dfm(corpus, 
              tolower=TRUE,  
              remove_punct =TRUE, 
              remove_numbers=TRUE,
@@ -667,37 +750,105 @@ dfm.unlabeled <- dfm(corpus,
              stem=TRUE, 
              verbose=TRUE)
 
-dfm.unlabeled <- dfm_select(dfm.unlabeled, pattern = dfm.train.under)
+dfm.unlabeled.sample <- dfm_select(dfm.unlabeled.sample, pattern = dfm.train.under)
 
-
-
-dim(dfm.unlabeled)
-labelpredict.unlabeled <- 1:nrow(dfm.unlabeled)
-length(labelpredict.unlabeled)
-
-## using loop because wa can't do all in one (memory exhaust)
-for (i in 1:2000) {
-  data <- data.frame(label=as.factor(0),
-                            digit4 = unlabeled$digit4[[i]],
-                        dfm.unlabeled[i,]) %>%
+dfm.unlabeled.sample <- data.frame(label=as.factor(0),
+                            digit4 = unlabeled.predicted.sample$digit4,
+                        dfm.unlabeled.sample) %>%
   select(-doc_id)
-  labelpredict <-predict(rf,data, type = "vote")
-  rf.result <- 1*(labelpredict[,2] > 74/100 )
-  labelpredict.unlabeled[[i]] <- rf.result
+
+labelpredict.unlabeled.sample <-predict(rf,dfm.unlabeled.sample, type = "vote")
+rf.result.sample <- vector(mode = "list",length=100)
+rf.result.sample <- 1*(labelpredict.unlabeled.sample[,2] > 74/100 )
+unlabeled.predicted.sample$predicted <- rf.result.sample
+unlabeled.predicted.sample %>%
+  filter(predicted != actual.manual)
+## two obs misclass for typo, 
+
+```
+
+## predict all
+```{r}
+load("rfunderCorrected.Rdata")
+unlabeled <- read_csv("dfunlabeledtranslated.csv")
+head(unlabeled)
+unlabeled <- unlabeled %>%
+  mutate(digit4 = ifelse(str_detect(translatedText,"[:digit:]{4}"),1,0))
+
+n <- 1000
+nr <- nrow(unlabeled)
+unlabeled.list <- split(unlabeled, rep(1:ceiling(nr/n), each=n, length.out=nr))
+
+predict.unlabeled <- function(data, model) {
+  ## preprocessing unlabeled
+  #create a corpus
+  corpus <- corpus(data$translatedText) 
+  #create document frequency matrix with verb
+  dfm.unlabeled <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+  
+  dfm.unlabeled <- dfm_select(dfm.unlabeled, pattern = dfm.train.under)
+  
+  df <- data.frame(label=as.factor(0),
+                     digit4 = data$digit4,
+                     dfm.unlabeled) %>%
+    select(-doc_id)
+
+  labelpredict.unlabeled <-predict(model, df, type = "vote")
+  return(labelpredict.unlabeled)
+}
+
+vote.rf <- vector(mode = "list", length = length(unlabeled.list))
+## using loop because wa can't do all in one (memory exhaust)
+for (i in 1:length(unlabeled.list)) {
   print(i)
-  }
+  vote.rf[[i]] <- predict.unlabeled(data = unlabeled.list[[i]], model = rf)
+}
 
 
-labelpredict.unlabeled <- labelpredict.unlabeled[1:2000]
-unlabeled$seafood_yn[1:2000] <- labelpredict.unlabeled
-df.year <- unlabeled[1:2000,] %>%
+vote.rf.bind <- do.call(rbind, vote.rf)
+rf.result <- 1*(vote.rf.bind[,2] > 74/100 )
+
+unlabeled$seafood_yn <- rf.result
+unlabeled <- unlabeled %>%
+  select(-digit4)
+head(unlabeled)
+write_csv(unlabeled, file = "unlabeledwithpredicted.csv")
+
+```
+## visual
+```{r}
+head(unlabeled)
+df.year <- unlabeled %>%
   select(times_appeared, first_appeared, last_appeared, seafood_yn, translatedText)
 
 df.year <- df.year %>%
   filter(times_appeared>0)
+
+labeled <- read_csv("dflabeledtranslated_edited.csv")
+df.year.2 <- unlabeled %>%
+  select(times_appeared, first_appeared, last_appeared, seafood_yn, translatedText) %>%
+  filter(times_appeared>0)
+df.year <- rbind(df.year,df.year.2)
+
+##number of seafood and non seafood
+table(df.year$seafood_yn)
+##Proportion of seafood and non seaffod
+prop.table(table(df.year$seafood_yn))
+
+dim(df.year)
+
 data <- vector(mode = "list", length = nrow(df.year))
 for (i in seq_along(data)) {
   name.vec <- rep(df.year$translatedText[i], df.year$times_appeared[i])
+  label.vec <- rep(df.year$seafood_yn[i], df.year$times_appeared[i])
 year.vec <- if (df.year$times_appeared[i] == 1) {
   c(df.year$first_appeared[i])
   } else if (df.year$times_appeared[i] == 2) {
@@ -708,16 +859,69 @@ year.vec <- if (df.year$times_appeared[i] == 1) {
   )
     } 
 data[[i]] <- data.frame (translatedText = name.vec,
+                         label = label.vec,
                     year = year.vec)
 }
 
 data <- do.call(rbind, data)
+head(data)
 
 data <- data %>%
-  left_join(df.year)
+  mutate(label = as.factor(label))
 
 data %>%
-  filter(seafood_yn == 1) %>%
+  filter(1920<year & year < 2020) %>%
+  ggplot(aes(year, fill = label)) + geom_histogram() + 
+  theme_bw() + labs(title = "Dish in the last 100 years")
+
+seafood <- data %>%
+  filter(label == 1)
+
+##annotate seafood
+## annotate dish name, to create dictionary of noun in training set
+dl <- udpipe_download_model(language = "english")
+udmodel<- udpipe_load_model(file = dl$file_model)
+annotate <- udpipe_annotate(udmodel, seafood$translatedText)
+annotate <- as.data.frame(annotate)
+table(annotate$upos)
+process <- annotate%>%
+  filter(upos == "VERB") %>%
+  group_by(lemma) %>%
+  tally() %>%
+  arrange(desc(n))
+
+length(process$lemma)
+corpus.process <- corpus(process$lemma) 
+
+#create document frequency matrix and clean the corpus
+dfm.process <- dfm(corpus.process, 
+             stem=TRUE, 
+             verbose=TRUE)
+
+df.lemma <- data.frame(dfm.process) %>%
+  gather(-doc_id, key = key, value = value) %>%
+  filter(value != 0)
+df.lemma$doc_id <- str_remove_all(df.lemma$doc_id , "text")
+
+df.lemma <- df.lemma %>%
+  arrange(parse_number(doc_id)) %>%
+  filter(key != "X.")
+process <- cbind(process, df.lemma)
+
+## provessing words (verb) that are most frequently appears in seafood (with stemming)
+process %>%
+  group_by(key) %>%
+  summarise(n = sum(n)) %>%
+  arrange(desc(n))
+
+process[1:20,] %>%
+  mutate(key = factor(key)) %>%
+  group_by(key) %>%
+  summarise( n = sum(n)) %>%
+  ggplot(aes(reorder(key, -n),n)) + geom_col() + theme_bw()
+
+
+data %>%
   mutate(oyster = str_detect(translatedText, "oyster|Oyster")*1) %>%
   group_by(year) %>%
   summarise(n = sum(seafood_yn), 
@@ -726,11 +930,7 @@ data %>%
   gather(n:oyster, key= key, value = val) %>%
   ggplot(aes(year, val, color=key)) + geom_line() + theme_classic()
 
-              
 
-```
-## visual
-```{r}
-unlabeled.predicted
+## total, proportion, adj-noun label for seafood_yn
 ```
 
