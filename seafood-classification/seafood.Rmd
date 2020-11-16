@@ -568,7 +568,7 @@ lose ease of interpretability from decision tree.
 
 Due to processing power needed to run random forest, we choose to use Undersampling training only.
 
-Using 500 trees, and 55 words at a time we found our forest 0.9869599 in accuracy (using loss 0.74 for 1)
+Using 500 trees, and 55 words at a time we found our forest 0.9869599 in accuracy (using loss function 0.74 for 1)
 ```{r}
 library(randomForest)
 
@@ -590,6 +590,13 @@ labelpredictrf.a <-predict(rf,test.dfm.allword)
 confusionMatrix(labelpredictrf.a,test.dfm.allword$label)
 save(rf,file = "rfunderCorrected.Rdata")
 load("rfunderCorrected.Rdata")
+
+## which words are important when model built trees?
+
+as.data.frame(rf$importance) %>%
+  arrange(desc( MeanDecreaseGini))
+
+
 labelpredictrf <-predict(rf,test.dfm.allword, type = "vote")
 length(test.dfm.allword$label)
 rf.result <- vector(mode = "list",length=100)
@@ -829,13 +836,9 @@ head(unlabeled)
 df.year <- unlabeled %>%
   select(times_appeared, first_appeared, last_appeared, seafood_yn, translatedText)
 
-df.year <- df.year %>%
-  filter(times_appeared>0)
-
 labeled <- read_csv("dflabeledtranslated_edited.csv")
-df.year.2 <- unlabeled %>%
-  select(times_appeared, first_appeared, last_appeared, seafood_yn, translatedText) %>%
-  filter(times_appeared>0)
+df.year.2 <- labeled %>%
+  select(times_appeared, first_appeared, last_appeared, seafood_yn, translatedText)
 df.year <- rbind(df.year,df.year.2)
 
 ##number of seafood and non seafood
@@ -844,6 +847,12 @@ table(df.year$seafood_yn)
 prop.table(table(df.year$seafood_yn))
 
 dim(df.year)
+df.year <- df.year %>%
+  filter(times_appeared > 0)
+
+# how we solve it?
+sort(unique(df.year$first_appeared))
+sort(unique(df.year$last_appeared)) ##0,1,2928
 
 data <- vector(mode = "list", length = nrow(df.year))
 for (i in seq_along(data)) {
@@ -853,10 +862,11 @@ year.vec <- if (df.year$times_appeared[i] == 1) {
   c(df.year$first_appeared[i])
   } else if (df.year$times_appeared[i] == 2) {
   c(df.year$first_appeared[i], df.year$last_appeared[i])
+    } else if (df.year$times_appeared[i] >2 & df.year$first_appeared[i] == df.year$last_appeared[i]) {
+      rep(df.year$first_appeared[i], df.year$times_appeared[i])
     } else {
-  c(df.year$first_appeared[i], df.year$last_appeared[i],
-    sample(df.year$first_appeared[i]:df.year$last_appeared[i], df.year$times_appeared[i]-2, replace = TRUE)
-  )
+      c(df.year$first_appeared[i], df.year$last_appeared[i],
+    sample(df.year$first_appeared[i]:df.year$last_appeared[i], df.year$times_appeared[i]-2, replace = TRUE))
     } 
 data[[i]] <- data.frame (translatedText = name.vec,
                          label = label.vec,
@@ -870,9 +880,9 @@ data <- data %>%
   mutate(label = as.factor(label))
 
 data %>%
-  filter(1920<year & year < 2020) %>%
+  filter(1820<year & year < 2020) %>%
   ggplot(aes(year, fill = label)) + geom_histogram() + 
-  theme_bw() + labs(title = "Dish in the last 100 years")
+  theme_bw() + labs(title = "Dish in the last 200 years")
 
 seafood <- data %>%
   filter(label == 1)
@@ -909,28 +919,48 @@ df.lemma <- df.lemma %>%
 process <- cbind(process, df.lemma)
 
 ## provessing words (verb) that are most frequently appears in seafood (with stemming)
-process %>%
+top20process <-process %>%
+  select(key,n) %>%
   group_by(key) %>%
   summarise(n = sum(n)) %>%
-  arrange(desc(n))
+  arrange(desc(n)) %>%
+  slice(1:20)
 
-process[1:20,] %>%
-  mutate(key = factor(key)) %>%
-  group_by(key) %>%
-  summarise( n = sum(n)) %>%
-  ggplot(aes(reorder(key, -n),n)) + geom_col() + theme_bw()
+ggplot(top20process,aes(reorder(key, -n),n)) + geom_col() + theme_bw() + labs("top 20 processing words in seafood dishes")
+
+corpus.seafood <- corpus(seafood$translatedText)
+
+df.seafood <- dfm(corpus.seafood, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE)
+popseafod.peryear <- seafood$year %>%
+  unique() %>%
+  sort()
+exclude <- top20process$key[1:10]
+popseafod.peryear.name <- 1:length(popseafod.peryear)
+for ( i in seq_along(popseafod.peryear)) {
+  index <- which(seafood$year == popseafod.peryear[[i]])
+  df.popular <- df.seafood[index,]
+  df.popular <- apply(df.popular,2, sum)
+  df.popular <- df.popular[!names(df.popular) %in% exclude]
+  popseafod.peryear.name[[i]] <- names(which.max(df.popular))
+}
+
+popseafod.peryear <- data.frame(year = popseafod.peryear, 
+                                name = popseafod.peryear.name)
+
+popseafod.peryear %>%
+  filter(year > 1850,
+         year< 2020)
 
 
-data %>%
-  mutate(oyster = str_detect(translatedText, "oyster|Oyster")*1) %>%
-  group_by(year) %>%
-  summarise(n = sum(seafood_yn), 
-            oyster = sum(oyster)) %>%
-  filter(year > 1900) %>%
-  gather(n:oyster, key= key, value = val) %>%
-  ggplot(aes(year, val, color=key)) + geom_line() + theme_classic()
-
-
+seafood %>%
+  filter(year ==2003)
 ## total, proportion, adj-noun label for seafood_yn
 ```
 
