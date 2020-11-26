@@ -1,11 +1,397 @@
 ---
-title: "seafood"
+title: "Data Science Practicum Report : Seafood Appearances on Historical Menus"
 author: "Alan Nurcahyo"
-date: "9/5/2020"
+date: "12/1/2020"
 output: pdf_document
 ---
+# 1. Project Overview
+## 1.1 Project Name
+Seafood Appearances on Historical Menus
 
-```{r message=FALSE}
+## 1.2 Client Information
+Jessica Gephart, Seafood Globalization Lab. Email: jgephart@american.edu
+
+## 1.3 Project start-end
+Monday, August 24, 2020 - Friday, December 4, 2020
+
+## 1.4 Project description and Prerequisities
+The New York Public Library has compiled a database of menu items dating back to the 1840s. The goal of this project is to develop an automated approach for identifying and categorizing seafood dishes. The resulting categorization will be used to understand the change in seafood diversity and sourcing over time within this menu collection. Seafood Globalization Lab has labeled 38,491 dishes from the New York Public Library database as seafood and nonseafood, which might be used as training and testing datasets for machine learning techniques.
+
+Student need to understand basic R and able to implement a machine learning method.
+
+## 1.5 Student Information
+Alan Nurcahyo, Graduate Student in Master Of Data Science Program, American University. Email: an4234a@student.american.edu
+
+## 1.6 Student's Objective
+The student is required to build off an initial training dataset and apply machine learning techniques to identify and categorize menu items into seafood or nonseafood dishes. The student will use either the labeled dataset for analysis. The result is a machine learning model capable of identifying and classifying dishes into seafood dishes and nonseafood dishes from New York Public Library database. The student is expected to present and validate different models using general classifier methods, including (but not limited to) Logistic Regression, Support Vector Machine, K-nearest neighbour etc. The choosen model is expected to be robust, capable of predicting new observations when the database is updated. All work will be written in R.
+
+## 1.7 Student's Task
+1. Preprocessing data for training and testing data, using a labeled dataset provided by the client.
+2. Analyze the power of a sample from the labeled dataset.
+3. Apply machine learning algorithm for identifying and categorizing menu items.
+4. Create a machine learning model from the algorithm.
+5. Tune model and validate results using test dataset.
+6. Summarize and visualize findings.
+7. Create a report based on findings.
+
+
+# 2 NYPL Whats on the menu? datasets
+
+The New York Public Library’s menu collection, housed in the Rare Book Division, originated 
+through the energetic efforts of Miss Frank E. Buttolph (1850-1924), who, in 1900, began to 
+collect menus on the Library's behalf. The collection has continued to grow through additional 
+gifts of graphic, gastronomic, topical, or sociological interest, especially but not exclusively 
+New York-related. The collection now contains approximately 45,000 menus dating from the 1840s 
+to the present, about quarter of which have so far been digitized and made available in the 
+NYPL Digital Gallery.
+
+New York Public Library’s What’s on the Menu? project transcribes menu data using crowd-sourced
+system. Volunteers joins the project and transcribe menu from scanned or photographed menu from 
+the collection. The trancibing process is still continuing and the data were updated regularly. 
+Therefore, it is possible that we will have more dish from older years than later years.
+
+## 2.1 Load and review dataset
+There are 423165 obs and 10 column in dataset.   
+[1] "id": Unique Id for dish  
+[2] "name": Name of dish  
+[3] "description":   
+[4] "menus_appeared": indicate how many menu list the dish in it  
+[5] "times_appeared": indicate how many times dish appeared during first time 
+appeared and last time appeared  
+[6] "first_appeared": indicate year in which the dish first time seen  
+[7] "last_appeared": indicate year in which the dish last time seen  
+[8] "lowest_price": indicate the lowest price of dish ever recorded  
+[9] "highest_price": indicate the highest price of dish ever recorded  
+[10] "seafood_yn": indicate whether the dish is seafood (coded 1) or not a 
+seafood (coded 0). NA indicate that the dish are not labeled.  
+There are 3,492 observation that are labeled as seafood dishes and 25,182 labeled
+as non-seafood dishes.  
+
+```{r message=FALSE, echo=FALSE, warning = FALSE, results=FALSE}
+library(tidyverse) #data wrangling
+library(googleLanguageR) # translate
+
+#load dataset
+df <- read_csv("/Users/alannurcahyo/Documents/Documents/AU/fall2020/DATA/Seafood_Dishes.csv")
+
+## column names
+names(df)
+##check label
+dim(df)
+unique(df$seafood_yn)
+table(df$seafood_yn)
+```
+## 2.2 Sample evaluation
+### 2.2.1 Distribution of labeled and non labeled by Year
+Most of observtions dated from 1900's to 1920's, this happen due to the fact that the New York 
+Public Library’s menu collection is started by Miss Frank E. Buttolph (1850-1924), who, in 1900, 
+began to collect menus on the Library's behalf. Miss Buttolph added more than 25,000 menus to 
+the collection, before leaving the Library in 1924. 
+
+The histogram shows that the data lacks of observation from later year (after 1907). 
+From total of 246,640 observations after 1907, only 58 of them are labeled.
+
+
+```{r message=FALSE, echo=FALSE, warning = FALSE, results=FALSE}
+####### Histogram for evaluation ##########
+#Histogram of first time the menu appeared
+# It appears that the labeled data lack of observation from later year
+df %>%
+  filter(first_appeared != 0,
+         first_appeared != 1,
+         first_appeared != 2928) %>%
+  mutate( labeled = !is.na(seafood_yn)) %>%
+  ggplot(aes(first_appeared, fill = labeled)) + 
+  geom_histogram(binwidth = 10)+ theme_bw() +
+  labs(title = "Data Distribution by First Appeared")
+
+#Histogram of last time the menu appeared
+# It appears that the labeled data has a sufficient range of observation
+df %>%
+  filter(last_appeared != 0,
+         last_appeared != 1,
+         last_appeared != 2928) %>%
+  mutate( labeled = !is.na(seafood_yn)) %>%
+  ggplot(aes(last_appeared, fill = labeled)) + 
+  geom_histogram(binwidth = 10) + theme_bw() +
+  labs(title = "Data Distribution by Last Appeared")
+
+# comparison between labeled and unlabeled data by first appeared
+# It appears that labeled data lack of observation after 1908 
+count.first.appeared <- df %>%
+  filter(first_appeared != 0,
+         first_appeared != 1,
+         first_appeared != 2928) %>%
+  mutate( labeled = !is.na(seafood_yn)) %>%
+  group_by(first_appeared, labeled) %>%
+  count() %>%
+  spread(labeled, n)
+# number of observation after 1097
+sum(count.first.appeared$`FALSE`[count.first.appeared$first_appeared>1907])
+
+# number of labeled observation after 1097
+sum(count.first.appeared$`TRUE`[count.first.appeared$first_appeared>1907], na.rm = TRUE)
+```
+
+We need to generate new sample so that dataset has a vocabulary from later years. To do that, 
+we take one percent of oberservation after 1908 to be labeled. To make sure we have good additional
+sample we take # observation based on it's proportion to dataset. Therefore, for example, if we 
+have more dishes in 1988 than 1990, we take more sample from 1988 than 1990. This approach also 
+making sure that we have at least one sample from all years. We have 2396 new observations to be 
+labeled in the next step.
+
+Finally, we label it 1 for seafood or 0 for non-seafood, then we bind new labeled sample to dataset.
+```{r eval=FALSE, echo=FALSE}
+####### Generate new sample ##########
+
+# let's take one percent of oberservation after 1908 to be labeled and round it
+# per year we need following observation
+n_new_sample <- count.first.appeared %>%
+  mutate(n_sample = round(`FALSE`/100,0)) %>%
+  select(first_appeared,n_sample) %>%
+  filter(first_appeared >1907,
+         n_sample >0)
+
+# we take n number of observation from unlabeled dataset by following the number 
+# we need on n_new_sample$n_sample
+new_sample <- vector(mode = "list", length = nrow(n_new_sample))
+for (i in seq_along(new_sample)) {
+  new_sample[[i]] <- df.unlabeled %>%
+    filter(first_appeared == n_new_sample$first_appeared[[i]]) %>%
+    sample_n(n_new_sample$n_sample[[i]])
+}
+new_sample <- do.call(rbind, new_sample)
+
+# write it to csv
+write_csv(new_sample,"new_sample.csv")
+############ label it manually, then load the labeled new sample into R ####
+new_sample_labeled <- read_csv("new_sample_labeled.csv")
+dim(new_sample_labeled)
+new_sample_labeled <- new_sample_labeled %>%
+  filter(seafood_yn %in% c(0,1))
+
+df <- df %>%
+  anti_join(new_sample_labeled, by = "id")
+df <- rbind(df, new_sample_labeled)
+```
+
+### 2.2.2 Translating dish name and evaluating data vocabulary
+
+Name variable in the dataset is written in namy languages, including English, Germany,
+and French. This difference in language used causes several problems. firstly, it is 
+difficult for cleaning procedure such as removing stop words and stemming. Secondly, 
+the same dish will be seen as different dish is it'swritten in other language. 
+Therefore, we will translate name variable in dataset using Google Translate API.
+
+Using Google API, we make loop function that translate dish name one by one and save 
+it into a new object. Next, we use 'cbind' to merge it with dataset as new variable 
+translatedText.
+
+```{r eval = FALSE, echo=FALSE}
+###################### use google API #########################
+## the output file is saved in .csv because it is costly and time consuming to run it everytime
+gl_auth("seafood-translation-f329aa685c7f.json")
+df.name.translate <- vector(mode = "list", length = nrow(df))
+
+for (i in seq_along(df.name.translate)) {
+     df.name.translate[[i]] <- gl_translate(df$name[i], target = "en")
+}
+
+df.name.translate.bind <- do.call(rbind, df.name.translate)
+df.name.translate.bind <- df.name.translate.bind %>%
+  distinct()
+write_csv(df.name.translate.bind, " translationgoogleall.csv")
+df <- left_join(df, df.name.translate.bind)
+```
+
+Once we have all name in english, we can evaluate whether our our train sample has a proper 
+vocabulary compared to the rest of dataset (unlabeled). 
+
+To do that, first we separate labeled and unlabeled dataset. Then we make train and test 
+from labeled dataset. We will do this process again after we add more observation to enrich 
+vocabulary in our dataset.
+
+```{r eval = FALSE, echo=FALSE}
+unlabeled <- df %>%
+  filter(is.na(seafood_yn))
+labeled <- df %>%
+  filter(!is.na(seafood_yn))
+nrow(labeled) + nrow(unlabeled) == nrow(df)
+
+###### create training and test with the same prob #######
+
+#create index of stratified 80:20 split that maintain proportion of label.
+index <- caret::createDataPartition(labeled$seafood_yn, times = 1,
+                                    p = 0.8, list= FALSE) 
+
+# train and test
+train <- labeled[index,]
+test <- labeled[-index,]
+
+````
+
+Next, we will create document frequency matrix from datasets so we can count each unique 
+number of words in unlabeled dataset, dummy train dataset, and dummy test dataset.
+```{r eval = FALSE, echo=FALSE}
+#################### add vocabulary ##############
+#create a corpus for unlabeled dataset
+corpus <- corpus(unlabeled$translatedText) 
+
+#create document frequency matrix with verb
+dfm.unlabeled <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+
+
+############ create a corpus for train  dataset #######
+#create a corpus for unlabeled dataset
+corpus <- corpus(train$translatedText) 
+
+#create document frequency matrix with verb
+dfm.train <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+
+
+############ create a corpus for test  dataset #######
+corpus <- corpus(test$translatedText) 
+
+#create document frequency matrix with verb
+dfm.test <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+```
+
+Once we had all three document frequency, we make a table that contain words count from each matrix
+```{r eval = FALSE, echo = FALSE}
+######### table that contain all word count in unlabeled ########
+dfm.unlabeled.trimmed <- dfm_trim(dfm.unlabeled, min_docfreq = 15, verbose = TRUE)
+dim(dfm.unlabeled.trimmed)
+count.unlabeled <- apply(dfm.unlabeled.trimmed[1:100000,], 2, sum)
+count.unlabeled2 <- apply(dfm.unlabeled.trimmed[100001:200000,], 2, sum)
+count.unlabeled3 <- apply(dfm.unlabeled.trimmed[200001:300000,], 2, sum)
+count.unlabeled4 <- apply(dfm.unlabeled.trimmed[300001:392095,], 2, sum)
+count.unlabeled <- count.unlabeled+count.unlabeled2+count.unlabeled3+count.unlabeled4
+count.unlabeled <- data.frame(name = names(count.unlabeled),
+           freq = count.unlabeled)
+
+######### table that contain all word count in dummy train ########
+count.train <- apply(dfm.train, 2, sum)
+count.train <- data.frame(name = names(count.train),
+           freq = count.train)
+######### table that contain all word count in dummy test ########
+count.test <- apply(dfm.test,2,sum)
+count.test <- data.frame(name = names(count.test),
+           freq = count.test)
+```
+
+There might be too much data to evaluate. To make it feasible to add more sample we 
+decided to choose 10,000 unique words that are most frequently appear. Then, we join 
+top term from three count table that we had before. The results is a table of most 
+frequent data that are not available in train and/or test dataset.
+```{r eval = FALSE, echo=FALSE}
+## top words
+topterm.train <- count.train %>%
+  arrange(desc(freq)) %>%
+  slice(1:10000)
+
+topterm.test <- count.test %>%
+  arrange(desc(freq)) %>%
+  slice(1:1000)
+
+topterm.unlabeled <- count.unlabeled %>%
+  arrange(desc(freq)) %>%
+  slice(1:3000)
+
+nothing.on.labeled <- topterm.unlabeled %>%
+  left_join(topterm.train, by = "name") %>%
+  left_join(topterm.test, by = "name") %>%
+  filter(is.na(freq.y) & is.na(freq))
+```
+
+Based on table above, we decide to take 760 observations of words that aren't 
+available in labeled dataset. 
+```{r eval = FALSE, echo=FALSE}
+nothing.on.labeled.smp <- nothing.on.labeled %>%
+  mutate(freq.x = round(freq.x/100)+1)
+
+sampleoct22 <- vector(mode = "list", length = nrow(nothing.on.labeled))
+for (i in seq_along(sampleoct22)) {
+  sampleoct22[[i]] <- df.unlabeled %>%
+    filter(str_detect(translatedText,nothing.on.labeled$name[i])) %>%
+    select(id, first_appeared) %>%
+    arrange(desc(first_appeared)) %>%
+    slice(1:nothing.on.labeled.smp$freq.x[[i]]) %>% ## take number of dish from latest dish 
+                                                    ## (we low on new name dish)
+    select(id)
+}
+
+sampleoct22 <- do.call(rbind, sampleoct22)
+sampleoct22 <- unique(sampleoct22)
+sampleoct22.vector <- sampleoct22$id
+
+## add more label for pattern that are not available in training (see steps on appendix)
+## our pattern
+new.labeled.22oct <- df.unlabeled %>%
+  filter(id %in% sampleoct22.vector)
+write.csv(new.labeled.22oct, "newlabeled22oct.csv")
+```
+
+Then, we labele it manually. It worth to mention that even though we already translate
+dish name to english, one dish name are remain unidentifiable whether it is a seafood 
+or non seafood. We decided to leave it NA.
+```{r eval = FALSE, echo=FALSE}
+newlabeled22oct <- read_csv("newlabeled22oct.csv")
+newlabeled22oct <- newlabeled22oct[,-1] 
+which(is.na(newlabeled22oct$seafood_yn))
+newlabeled22oct <- newlabeled22oct[-598,] 
+```
+
+At last, we add our new sample to our labeled dataset. Then we remove it from unlabeled
+dataset. Finally we bind them together in df.all that contain all dataset.
+```{r eval = FALSE, echo=FALSE}
+##join it to labeled
+labeled <- rbind(labeled, newlabeled22oct)
+
+## remove it from unlabeled
+unlabeled <- unlabeled %>%
+  anti_join(newlabeled22oct, by = "id")
+
+## join it to make one single datasets
+df.all <- rbind(unlabeled, labeled)
+
+## check
+nrow(df.all) == nrow(df)
+
+## save 
+write_csv(df.all, file = "dfalltranslated.csv")
+write_csv(labeled, file = "dflabeledtranslated.csv")
+write_csv(unlabeled, file = "dfunlabeledtranslated.csv")
+```
+
+It worth to mention that There are some human error in labeled dataset, especially when 
+dish name is not in english. Therefore, we still continue to evaluate seafood_yn variable 
+in labeled dataset manually. Our final labeled dataset after final evaluation is dflabeledtranslated_edited.csv.
+
+```{r message=FALSE, echo=FALSE}
 library(tidyverse) ## for wrangling and tidying data
 library(ROSE) ## to genereate undersample 
 library(udpipe) ## to annotate text
@@ -25,7 +411,7 @@ library(gganimate) ## graphic animate
 # Data Preprocessing
 ## Overview on labeled dataset
 A labeled dataset consist of 31,829 obs and 11 variables.
-```{r echo = FALSE, cache = TRUE, message=FALSE}
+```{r echo = FALSE, cache = TRUE, message=FALSE, results=FALSE}
 df.labeled <- read_csv("dflabeledtranslated_edited.csv")
 dim(df.labeled)
 ```
@@ -60,6 +446,7 @@ number in our dish name, we want to reserve is another way, by creating new vari
 We can see from graph B, most of dishes do not contain 4 digit number. We can also see that 
 there are only two dishes that contain 4 digit number are seafood. We can see that this is 
 a good distinction measure to determine whether the dish is seafood or not.
+
 ```{r echo = FALSE, cache = TRUE}
 ### adding new variable to df.labeled to improve model performance
 popularseafoodwords <- c("oyster", "Oyster", "crab","Crab", "clam", "Clam","lobster","Lobster", 
@@ -121,11 +508,12 @@ We use Singular Value Decomposition to reduce variable to 300 variables. This re
 not only will help us increasing processing speed when we run the model, but also tackle multicolleniarity 
 problem in datasets, particularly when we want to use Logistic Regression model.
 
-Overall we have four type of training sets:
-1. Training with all vocabulary
-2. Training with only noun
-3. Undersampled training with all vocabulary
-4. Training with SVD
+Overall we have four type of training sets:  
+1. Training with all vocabulary  
+2. Training with only noun  
+3. Undersampled training with all vocabulary  
+4. Training with SVD  
+
 ### preprocess training set with all vocabulary
 We first create a corpus from training set. Corpus is a list consist of every words from 
 variable translated.We then clean our corpus by following our three cleaning steps, including:
@@ -254,13 +642,14 @@ In order to make a prediction in our test set, we have to follow the same steps 
 we did for a training set. Furthermore, test set must contain the same variable as 
 a training set, so we use training set pattern for test set.
 
-Overall, we have 3 test set:
-1. Test with all vocabulary
-2. Test with only noun
-3. Test with SVD.
+Overall, we have 3 test set:  
+1. Test with all vocabulary  
+2. Test with only noun  
+3. Test with SVD.  
 
 We don't make test set for undersampling because we can use the same test as training
 with all words to validate the result for undersampling training.
+
 ### preprocess test set all words
 ```{r echo = FALSE, cache = TRUE, results=FALSE, warning=FALSE, message=FALSE}
 
@@ -361,15 +750,11 @@ between neighbour is determined using Euclidean Distance.
 For this model we only use training with SVD. We cannot unreduced training because there 
 is too much similarity the value between observation (most obs will have 0 value), thus 
 there will be too many ties.
-
-Our best model is using k = 5, with percent 98.05 accuracy. Model has a very high Sensitivity
-0.9963 but relatively low Specificity : 0.8857.
-```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+```{r eval = FALSE, echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 ########################### knn #########################
 ################ using svd version of data ###########
 knn.result.svd <- vector(mode = "list",length=5)
 tune.knn <- c(5,25,50,100,150) #low k might be overfit models
-accuracy <- 1:5
 
 set.seed(1234)
 for (i in seq_along(tune.knn)) {
@@ -378,7 +763,16 @@ for (i in seq_along(tune.knn)) {
   accuracy[[i]] <- sum(test.svd$label == knn.result.svd[[i]] )/nrow(test.svd)
 }
 
-# save(knn.result.svd, file = "knn.result.svd.Rdata")
+save(knn.result.svd, file = "knn.result.svd.Rdata")
+```
+
+```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+load("knn.result.svd.Rdata")
+tune.knn <- c(5,25,50,100,150)
+accuracy <- 1:5
+for (i in seq_along(tune.knn)) {
+  accuracy[[i]] <- sum(test.svd$label == knn.result.svd[[i]] )/nrow(test.svd)
+}
 
 ## determine the best k
 best.accuracy(knn.result.svd,testdf = test.svd)
@@ -386,7 +780,8 @@ best.accuracy(knn.result.svd,testdf = test.svd)
 ## graph for number of neighbour (k) vs accuracy
 plot(tune.knn, accuracy, lwd= 5)
 ```
-
+Our best model is using k = 5, with percent 98.05 accuracy. Model has a very high Sensitivity
+0.9963 but relatively low Specificity : 0.8857.
 
 ## Logistic Regression
 Our next model is Logistic Regression. We determine our prediction by measuring probability of
@@ -399,13 +794,16 @@ since most data frame has a 0 value, most independent variables are dependent wi
 To tackle this problem we can use svd version of training set. This approach eliminate 
 multicollinearity but at the same time deleting main advantages, that is we lose explanability 
 of coefficient.
-```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+```{r eval=FALSE, echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 ############# using svd version of data #########
 logfit.svd <- glm(label ~ ., data = train.svd, family=binomial)
 
 ## Took less than a minute to return a model
-# save(logfit.svd, file = "logfit.svd.Rdata")
+save(logfit.svd, file = "logfit.svd.Rdata")
+```
 
+```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+load("logfit.svd.Rdata")
 ##################### predict with test ##################
 # predict
 logpredict <- predict(logfit.svd, newdata = test.svd,  type = "response")
@@ -422,8 +820,8 @@ best.accuracy(log.result.svd, testdf = test.svd)
 
 Other possible approach is to use variable selection. Due to high number of variables 
 we choose to include only significant variable (>0.1 alpha) as our final model. In the
-code below, we train our train with only noun dataset using.
-```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+code below, we train our train with only.
+```{r eval = FALSE, echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 ############# using dfm with only Noun version of data #########
 logfit.noun <- glm(label ~ ., data = train.dfm.noun, family=binomial)
 ## there are multicollinerity problem in dataset
@@ -432,7 +830,12 @@ coef.sig <- coef.table.log.noun %>%
   filter(p.value < 0.1)
 term.sig <- paste(coef.sig$term[-1] ,collapse = "+")
 logfit.noun <- glm(paste("label~", term.sig, sep = ""), data = train.dfm.noun, family=binomial)
+## save model
+save(logfit.noun, file = "logfit.noun.Rdata")
+```
 
+```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+load("logfit.noun.Rdata")
 ##################### predict with test ##################
 # predict
 logpredict <- predict(logfit.noun, newdata = test.dfm.Noun,  type = "response")
@@ -446,14 +849,11 @@ for (i in 1:100) {
 
 ## determine best threshold
 best.accuracy(log.result.noun, testdf = test.dfm.Noun)
-
-## save model
-# save(logfit.noun, file = "logfit.noun.Rdata")
 ```
 
 As the final approach for logistic regression, we also tried to use undersampling training with
 the same approach as training with only noun.
-```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+```{r eval = FALSE, echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 ############# using dfm with with undersampling #########
 logfit.allword <- glm(label ~ ., data = train.dfm.under, family=binomial)
 coef.table.log.allword <- tidy(logfit.allword)
@@ -463,7 +863,11 @@ term.sig <- paste(coef.sig$term[-1] ,collapse = "+")
 
 
 logfit.allword <- glm(paste("label~", term.sig, sep = ""), data = train.dfm.under, family=binomial)
+save(logfit.allword, file = "logfitallword.Rdata")
+```
 
+```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+load("logfitallword.Rdata")
 ##################### predict with test ##################
 # predict
 logpredict <- predict(logfit.allword, newdata = test.dfm.allword,  type = "response")
@@ -476,8 +880,6 @@ for (i in 1:100) {
 
 ## determine best threshold
 best.accuracy(log.result.allword, testdf = test.dfm.allword)
-
-# save(logfit.allword, file = "logfitallword.Rdata")
 ```
 Using Logistic regression, our best model is using training with only noun, with 97.67 
 percent accuracy.
@@ -495,42 +897,56 @@ i.e oyster, mackerel, bass, etc. Pruned trees version (trees wih smaller number 
 prove to have less accuracy than full grown trees.
 
 Tree 1 : Using train set with noun only
-```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+```{r eval = FALSE, echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 ### with only noun ######
 tree.1 <- tree( label ~ ., train.dfm.noun)
-label.predict <-  predict( tree.1, test.dfm.Noun, type="class")
-confusionMatrix(label.predict,test.dfm.Noun$label)
-
 ## can we prune? Answer: the biggest tree size has the highest accuracy
 ## thus it is better not to prune
 cv.1 <- cv.tree( tree.1, FUN = prune.misclass )
 
-# save(tree.1, file="tree1.Rdata")
+save(tree.1, file="tree1.Rdata")
+save(cv.1, file="cv1.Rdata")
+```
+
+```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+load("tree1.Rdata")
+label.predict <-  predict( tree.1, test.dfm.Noun, type="class")
+confusionMatrix(label.predict,test.dfm.Noun$label)
 ```
 
 Tree 2 : Using train set with all words
-```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+```{r eval = FALSE, echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 ################ all word ####################
 tree.2 <- tree( label ~ ., train.dfm.allword)
-label.predict2 <-  predict( tree.2, test.dfm.allword, type="class" )
-
-confusionMatrix(label.predict2,test.dfm.allword$label)
 
 ####### can we prune? Answer: the biggest tree size has the highest accuracy
 cv.2 <- cv.tree( tree.2, FUN = prune.misclass )
 
-# save(tree.2, file="tree2.Rdata")
+save(tree.2, file="tree2.Rdata")
+save(cv.2, file="cv2.Rdata")
+```
+
+```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+load("tree2.Rdata")
+label.predict2 <-  predict( tree.2, test.dfm.allword, type="class" )
+
+confusionMatrix(label.predict2,test.dfm.allword$label)
 ```
 
 Tree 3 : Using train set with undersampling
-```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+```{r eval = FALSE, echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 ####################  undersampling training #############
 tree.3 <- tree( label ~ ., train.dfm.under)
-label.predict3 <-  predict( tree.3, test.dfm.allword, type="class" )
 
 ## can we prune? Answer: the biggest tree size has the highest accuracy
-cv.3 <- cv.tree( tree.2, FUN = prune.misclass )
+cv.3 <- cv.tree( tree.3, FUN = prune.misclass )
+save(tree.3, file="tree3.Rdata")
+save(cv.3, file="cv3.Rdata")
+```
 
+```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+load("tree3.Rdata")
+label.predict3 <-  predict( tree.3, test.dfm.allword, type="class" )
 confusionMatrix(label.predict3,test.dfm.allword$label)
 # save(tree.3, file="tree3.Rdata")
 ```
@@ -540,6 +956,9 @@ pruning (reducing the number of branches) will reduce error rate. We can see fro
 below that pruning doesn't reducing misclassification rate, thus our model is the best 
 decision tree for respective training set.
 ```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+load("cv1.Rdata")
+load("cv2.Rdata")
+load("cv3.Rdata")
 #Tree 1
 plot(cv.1)
 title(main = "10-fold CV for Tree 1")
@@ -566,31 +985,44 @@ observation in a group. It will determinde how flexible our model is
 
 First, try different cost and different kernel in undersample trainingand see what is 
 the best kernel and cost
-```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+```{r eval = FALSE, echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 tune.under.svm <- tune(svm, label ~ ., data=train.dfm.under, 
                         ranges=list(cost=10^seq(-2,2), 
                                     kernel=c("linear","polynomial", "sigmoid", "radial")) )
-summary(tune.under.svm)[[1]]
-# save (tune.under.svm, file = "tunesvm.Rdata")
+save (tune.under.svm, file = "tunesvm.Rdata")
 ```
+
+```{r echo=FALSE}
+load("tunesvm.Rdata")
+summary(tune.under.svm)[[1]]
+```
+
 Since the best model is linear kernel with cost = 1, we then can proceed with this model
 and use it with different training.
-```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+```{r eval = FALSE, echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 # with under sampling
 svm.2 <-  svm( label ~ ., data=train.dfm.under, kernel="linear")
-labelpredictsvm2 <-predict(svm.2,test.dfm.allword)
 
-confusionMatrix(labelpredictsvm2,test.dfm.allword$label)
-# save(svm.2,file = "svmunder.Rdata")
+save(svm.2,file = "svmunder.Rdata")
 
 ## with noun only
 svm <-  svm( label ~ ., data=train.dfm.noun, kernel="linear")
 summary(svm)
+
+save(svm,file = "svmundernoun.Rdata")
+```
+Training with undersampling
+```{r echo =FALSE}
+load("svmunder.Rdata")
+labelpredictsvm2 <-predict(svm.2,test.dfm.allword)
+confusionMatrix(labelpredictsvm2,test.dfm.allword$label)
+```
+Training with all words
+```{r echo =FALSE}
+load("svmundernoun.Rdata")
 labelpredictsvm <-predict(svm,test.dfm.Noun)
 
 confusionMatrix(labelpredictsvm,test.dfm.Noun$label)
-
-# save(svm,file = "svmundernoun.Rdata")
 ```
 Using train with noun only gives us very high Sensitivity but much lower Specificity, while
 using under sampling, while giving us a little bit lower accuracy gives us a more balanced 
@@ -605,7 +1037,7 @@ that we make. This model however, lose some degree of interpretability from deci
 Due to processing power needed to run random forest, we choose to use run random forest 
 only on undersampling training.
 
-```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
+```{r eval = FALSE, echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 ### tune with different m 
 cl <- makeCluster(10)
 registerDoSNOW(cl)
@@ -616,7 +1048,11 @@ rfb <- foreach(mtry=c(20,55,85,250,500), .packages='randomForest') %dopar% {
 }
 
 stopCluster(cl)
+```
 
+```{r echo =FALSE}
+load("rflist.rdata")
+tunemtry <- c(20,55,85,250,500)
 rf.err <- 1:5
 for (i in 1:5) {
   rf.err[i] <- min(rfb[[i]]$err.rate[,1])
@@ -665,6 +1101,7 @@ distribution.
 Additionally, Random Forest gives us major advantages in term of interpretability. While the model 
 is not as informative as Decision Tree or logistic regression, we still can see what words are 
 mostly a important determinant in predicting seafood or non seafood.
+
 ```{r echo = FALSE, cache = TRUE, warning=FALSE, message=FALSE}
 #table
 result <- rbind(
@@ -696,6 +1133,14 @@ result%>%
 ```
 
 ## Predict all unlabeled data using Random Forest
+We will use Random Forest with 500 trees and 500 variable as our model to predict 
+unlabeled dataset. We use the same cleaning and preprocessing as we did with test 
+dataset.
+
+Due to high # of observations, we create partition with 1000 observations in each 
+group. Using foor function, we then predict observation and add them to variable 
+seafood_yn.
+
 ```{r echo = FALSE, cache = TRUE, eval=FALSE}
 unlabeled <- read_csv("dfunlabeledtranslated.csv")
 unlabeled <- unlabeled %>%
@@ -750,7 +1195,7 @@ write_csv(unlabeled, file = "unlabeledwithpredicted_fin.csv")
 Once we have predicted label for all unlabeled data, we can make visualisation of all dataset.
 But first, we need to join all labeled data and unlabeled data that were predicted using random
 forest into one dataset.
-```{r echo = FALSE, cache = TRUE}
+```{r echo = FALSE, cache = TRUE, message=FALSE, results=FALSE}
 ################ combine dataset #########
 unlabeled <- read_csv("unlabeledwithpredicted_fin.csv")
 df.year <- unlabeled %>%
@@ -811,7 +1256,9 @@ n.seafood<- data %>%
 ```
 
 Example below are graphic we can generate from dataset.
+
 #### Number of dishes throughout years
+
 ```{r echo = FALSE, cache = TRUE}
 ## number of dishes throughout years
 data %>%
@@ -820,7 +1267,7 @@ data %>%
 ```
 
 #### Popular seafood processing method
-```{r echo = FALSE, cache = TRUE}
+```{r echo = FALSE, cache = TRUE, message=FALSE, error=FALSE}
 ## annotate seafood
 ## annotate dish name, to create dictionary of noun in training set
 dl <- udpipe_download_model(language = "english")
@@ -833,7 +1280,7 @@ process <- annotate%>%
   group_by(lemma) %>%
   tally() %>%
   arrange(desc(n))
-length(process$lemma)
+
 corpus.process <- corpus(process$lemma) 
 
 #create document frequency matrix and clean the corpus
@@ -847,8 +1294,8 @@ df.lemma <- data.frame(dfm.process) %>%
 df.lemma$doc_id <- str_remove_all(df.lemma$doc_id , "text")
 
 df.lemma <- df.lemma %>%
-  arrange(parse_number(doc_id)) %>%
-  filter(key != ".")
+  arrange(parse_number(doc_id))%>%
+  filter(!key %in% c("X.","."))
 process <- cbind(process, df.lemma)
 ## provessing words (verb) that are most frequently appears in seafood (with stemming)
 top20process <-process %>%
@@ -911,12 +1358,8 @@ ggplot(data=popprocess.decade) +
   theme(aspect.ratio = .2)+
   theme(legend.position="none") + 
   geom_text(aes(x = year.start, y = 0., label=name,angle=45,hjust=0)) +
-  labs(title = "Popular seaf0od processing perdecade")
-
-df.lemma[1251:1254,]
+  labs(title = "Popular seafood processing perdecade")
 ```
-
-
 
 #### Popular seafood per decade
 ```{r echo = FALSE, cache = TRUE}
@@ -933,7 +1376,7 @@ popseafod.peryear <- data.frame(year = popseafod.peryear,
                                 name = popseafod.peryear.name)
 
 ## popular seafood per year
-popseafod.peryear
+# popseafod.peryear
 
 ## popular seafood per decade
 seafood <- seafood%>%
@@ -947,7 +1390,7 @@ for ( i in seq_along(popseafod.perdecade)) {
   index <- which(seafood$decade == popseafod.perdecade[[i]])
   df.popular <- df.seafood[index,]
   df.popular <- apply(df.popular,2, sum)
-  df.popular <- df.popular[!names(df.popular) %in% exclude]
+  df.popular <- df.popular[!names(df.popular) %in% neg.main.ingred]
   popseafod.perdecade.name[[i]] <- names(which.max(df.popular))
 }
 
@@ -972,15 +1415,8 @@ popmain.pdecade +
   scale_colour_brewer(palette = "Pastel1") +
   geom_text(aes(x = year.start, y = 0., label=name,angle=45,hjust=0)) 
 
-animate.pop <- popmain.pdecade +
-  geom_segment(aes(x=year.start, xend=year.end, y=0., yend=0., color=name) , linetype=1, size=20) +
-  scale_colour_brewer(palette = "Pastel1") +
-  geom_text(aes(x = year.start, y = 0., label=name,hjust=0)) +
-  transition_reveal(year.start, keep_last = FALSE) + 
-  view_follow(fixed_x = FALSE)
-animate.pop <- animate(animate.pop, 300)
-anim_save("popdecade", animate.2)
 ```
+
 #### Plot time series standardise number of dishes
 ```{r echo=FALSE, cache = TRUE}
 data <- data %>%
@@ -1016,12 +1452,7 @@ graph2
 
 
 ```{r echo=FALSE, cache = TRUE}
-##sanimate and save as gif
-animate.2 <- graph2 + geom_text(aes(y = val, x = year+1, label = type)) +
-  transition_reveal(year) +
-  view_follow() 
-animate.2 <- animate(animate.2, duration = 60)
-anim_save("gif2", animate.2)
+
 # salmon tuna, tilapia, cod
 # oyster, lobster, crab, shrimp, clam, turtle, frog
 # fried vs non fried
@@ -1055,6 +1486,32 @@ df.seafood.name.vec.norm %>%
 df.seafood.name.vec.norm <- df.seafood.name.vec.norm %>%
   mutate(decade = floor(year/10))
 
+```
+
+#### Plot changes in popular dishes overtime
+```{r echo=FALSE, cache = TRUE}
+df.seafood.name.vec.norm%>%
+  filter(name %in% c("oyster","crab","salmon","lobster","shrimp")) %>%
+  ggplot(aes(year, num.norm, color= name)) + geom_smooth(se=FALSE) + 
+  theme_bw() + labs(title = "Changes in Popular Seafood Overtime (Smoooted)")
+```
+
+```{r eval= FALSE, echo=FALSE, cache = TRUE}
+##sanimate and save as gif
+animate.pop <- popmain.pdecade +
+  geom_segment(aes(x=year.start, xend=year.end, y=0., yend=0., color=name) , linetype=1, size=20) +
+  scale_colour_brewer(palette = "Pastel1") +
+  geom_text(aes(x = year.start, y = 0., label=name,hjust=0)) +
+  transition_reveal(year.start, keep_last = FALSE) + 
+  view_follow(fixed_x = FALSE)
+animate.pop <- animate(animate.pop, 300)
+anim_save("popdecade", animate.2)
+
+animate.2 <- graph2 + geom_text(aes(y = val, x = year+1, label = type)) +
+  transition_reveal(year) +
+  view_follow() 
+animate.2 <- animate(animate.2, duration = 60)
+anim_save("gif2", animate.2)
 graph3 <- df.seafood.name.vec.norm%>%
   filter(name %in% c("oyster","crab","salmon","lobster","shrimp")) %>%
   ggplot(aes(year, num.norm, color= name)) + geom_line() + 
@@ -1067,10 +1524,3 @@ animate.3 <- animate(graph3, duration = 60)
 anim_save("popseaffodovertime", animate.3)
 ```
 
-#### Plot changes in popular dishes overtime
-```{r echo=FALSE, cache = TRUE}
-df.seafood.name.vec.norm%>%
-  filter(name %in% c("oyster","crab","salmon","lobster","shrimp")) %>%
-  ggplot(aes(year, num.norm, color= name)) + geom_smooth(se=FALSE) + 
-  theme_bw() + labs(title = "Changes in Popular Seafood Overtime (Smoooted)")
-```
