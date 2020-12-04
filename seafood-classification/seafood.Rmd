@@ -1,7 +1,9 @@
 ---
 title: "Data Science Practicum Report : Seafood Appearances on Historical Menus"
-author: "Alan Nurcahyo"
-date: "12/1/2020"
+author: 
+  - Alan Nurcahyo^[American University; an4234a@student.american.edu]
+date: "2020-12-01"
+abstract: "The New York Public Library has compiled a database of menu items dating back to the 1840s. The goal of this project is to develop an automated approach for identifying and categorizing seafood dishes  The model that we use to predict unlabeled dataset is Random forest with ntree= 500 and m=500. The model has 98.21 percent accuracy, 98.38 percent sensitivity, and 97.14 specificity on test set. we find that Oyster was a popular food for almost 100 years, Lobster isn’t popular seafood dishes until mid 19th century, and Shrimp steadily increased in popularity."
 output: pdf_document
 ---
 # 1. Project Overview
@@ -20,7 +22,7 @@ The New York Public Library has compiled a database of menu items dating back to
 Student need to understand basic R and able to implement a machine learning method.
 
 ## 1.5 Student Information
-Alan Nurcahyo, Graduate Student in Master Of Data Science Program, American University. Email: an4234a@student.american.edu
+Alan Nurcahyo, Graduate Student in Master Of Data Science Program, American University.
 
 ## 1.6 Student's Objective
 The student is required to build off an initial training dataset and apply machine learning techniques to identify and categorize menu items into seafood or nonseafood dishes. The student will use either the labeled dataset for analysis. The result is a machine learning model capable of identifying and classifying dishes into seafood dishes and nonseafood dishes from New York Public Library database. The student is expected to present and validate different models using general classifier methods, including (but not limited to) Logistic Regression, Support Vector Machine, K-nearest neighbour etc. The choosen model is expected to be robust, capable of predicting new observations when the database is updated. All work will be written in R.
@@ -200,7 +202,7 @@ for (i in seq_along(df.name.translate)) {
 df.name.translate.bind <- do.call(rbind, df.name.translate)
 df.name.translate.bind <- df.name.translate.bind %>%
   distinct()
-write_csv(df.name.translate.bind, " translationgoogleall.csv")
+write_csv(df.name.translate.bind, "translationgoogleall.csv")
 df <- left_join(df, df.name.translate.bind)
 ```
 
@@ -651,6 +653,8 @@ We don't make test set for undersampling because we can use the same test as tra
 with all words to validate the result for undersampling training.
 
 ### preprocess test set all words
+We process this test set using the same steps as training set. In addition we 
+match variable for this test set with training set with all words.
 ```{r echo = FALSE, cache = TRUE, results=FALSE, warning=FALSE, message=FALSE}
 
 ############## choosing only Noun ##############
@@ -681,6 +685,8 @@ dim(test.dfm.allword)
 ```
 
 ### preprocess test set Noun only
+We process this test set using the same steps as training set. In addition we 
+match variable for this test set with training set with nouns only
 ```{r echo = FALSE, cache = TRUE, results=FALSE, warning=FALSE, message=FALSE}
 ## here we make a document frequency matrix with the same pattern
 ## as the corresponding training set
@@ -695,6 +701,8 @@ test.dfm.Noun <- data.frame(label=as.factor(test$seafood_yn),
 ```
 
 ### preprocess test set using all words then convert it to 300 variable using svd
+We process this test set using the same steps as training set. In addition we 
+match variable for this test set with training set with svd
 ```{r echo = FALSE, cache = TRUE, results=FALSE, warning=FALSE, message=FALSE}
 #we already have document frequancy matrix above
 
@@ -1106,15 +1114,15 @@ mostly a important determinant in predicting seafood or non seafood.
 #table
 result <- rbind(
   data.frame(mode = "KNN", training = "decomposition",best.accuracy(knn.result.svd,testdf = test.svd)$best_confusion.matric$table), ## knn with variable decomposition
-  data.frame(mode = "logistic reg", training = "decomposition", best.accuracy(log.result.svd, testdf = test.svd)$best_confusion.matric$table), ## logistic regressin with variable decomposition
-  data.frame(mode = "logistic reg", training = "noun", best.accuracy(log.result.noun, testdf = test.dfm.Noun)$best_confusion.matric$table), ## logistic regressin with noun only
-  data.frame(mode = "logistic reg", training = "under", best.accuracy(log.result.allword, testdf = test.dfm.allword)$best_confusion.matric$table), ## log reg with all words undersample
-  data.frame(mode = "Decision tree", training = "noun", confusionMatrix(label.predict,test.dfm.Noun$label)$table),  ##decision tree with noun
-  data.frame(mode = "Decision tree",training = "all words", confusionMatrix(label.predict2,test.dfm.allword$label)$table), ##decision tree with all word 
-  data.frame(mode = "Decision tree", training = "under", confusionMatrix(label.predict3,test.dfm.allword$label)$table),  ##decision tree with all word undersample
+  data.frame(mode = "log reg", training = "decomposition", best.accuracy(log.result.svd, testdf = test.svd)$best_confusion.matric$table), ## logistic regressin with variable decomposition
+  data.frame(mode = "log reg", training = "noun", best.accuracy(log.result.noun, testdf = test.dfm.Noun)$best_confusion.matric$table), ## logistic regressin with noun only
+  data.frame(mode = "log reg", training = "under", best.accuracy(log.result.allword, testdf = test.dfm.allword)$best_confusion.matric$table), ## log reg with all words undersample
+  data.frame(mode = "Tree", training = "noun", confusionMatrix(label.predict,test.dfm.Noun$label)$table),  ##decision tree with noun
+  data.frame(mode = "Tree",training = "all words", confusionMatrix(label.predict2,test.dfm.allword$label)$table), ##decision tree with all word 
+  data.frame(mode = "Tree", training = "under", confusionMatrix(label.predict3,test.dfm.allword$label)$table),  ##decision tree with all word undersample
   data.frame(mode = "svm", training = "noun", confusionMatrix(labelpredictsvm,test.dfm.Noun$label)$table),  ##svm with only noun
   data.frame(mode = "svm", training = "under", confusionMatrix(labelpredictsvm2,test.dfm.allword$label)$table), ##svm with allword undersample
-  data.frame(mode = "random forest", training = "under", confusion.matrix$table) #random forest with all word undersample
+  data.frame(mode = "rand. forest", training = "under", confusion.matrix$table) #random forest with all word undersample
   )
 
 result.table <- result %>%
@@ -1358,7 +1366,7 @@ ggplot(data=popprocess.decade) +
   theme(aspect.ratio = .2)+
   theme(legend.position="none") + 
   geom_text(aes(x = year.start, y = 0., label=name,angle=45,hjust=0)) +
-  labs(title = "Popular seafood processing perdecade")
+  labs(title = "Popular seafood processing per decade") + xlab("year")
 ```
 
 #### Popular seafood per decade
@@ -1413,7 +1421,7 @@ popmain.pdecade <- ggplot(data=popseafod.perdecade) +
 popmain.pdecade +
   geom_segment(aes(x=year.start, xend=year.end, y=0., yend=0., color=name) , linetype=1, size=20) +
   scale_colour_brewer(palette = "Pastel1") +
-  geom_text(aes(x = year.start, y = 0., label=name,angle=45,hjust=0)) 
+  geom_text(aes(x = year.start, y = 0., label=name,angle=45,hjust=0)) + xlab("year")
 
 ```
 
@@ -1440,7 +1448,8 @@ all.p.year <- dish.p.year %>%
 
 graph1 <- all.p.year%>%
   ggplot(aes(x = year, y = n.sf.norm)) + geom_line() + theme_bw() +
-  labs(title = "# of Seafod Dishes Nornalized")
+  labs(title = "# of Seafod Dishes Normalized") +
+  ylab("proportion of seafood to all dishes")
 
 graph2 <- all.p.year%>%
   gather(ends_with(".pyear"), key = type, value = val) %>%
@@ -1493,7 +1502,8 @@ df.seafood.name.vec.norm <- df.seafood.name.vec.norm %>%
 df.seafood.name.vec.norm%>%
   filter(name %in% c("oyster","crab","salmon","lobster","shrimp")) %>%
   ggplot(aes(year, num.norm, color= name)) + geom_smooth(se=FALSE) + 
-  theme_bw() + labs(title = "Changes in Popular Seafood Overtime (Smoooted)")
+  theme_bw() + labs(title = "Changes in Popular Seafood Overtime (Smoothed)") + 
+  ylab("Proportion of seafood over all dish")
 ```
 
 ```{r eval= FALSE, echo=FALSE, cache = TRUE}
@@ -1521,6 +1531,65 @@ graph3 <- df.seafood.name.vec.norm%>%
   view_follow() +
   + labs(title = "Changes in Popular Seafood Overtime")
 animate.3 <- animate(graph3, duration = 60)
-anim_save("popseaffodovertime", animate.3)
+anim_save("popseaffodovertime.gif", animate.3)
 ```
 
+# Summary
+
+- The model that we use to predict unlabeled dataset is Random forest with ntree= 500 and m=500.   
+- The model has 98.21% accuracy, 98.38% sensitivity, and 97.14 specificity on test set.  
+- Several pattern that we found including : Oyster was a popular food for almost 100 years! Lobster 
+isn’t popular seafood dishes until mid 19th century, and Shrimp steadily increased in popularity.  
+- In case of additional dataset need to be predicted using this model I would reccomend this steps
+of process
+```{r eval= FALSE, echo=FALSE, eval=FALSE }
+## load dataset
+unlabeled <- read_csv("newdatasetneed")
+
+## mutate dataframe so it consist of the same 
+## format as our NYPL dataset, with at least contains
+## two variable: translatedText and digit4, 
+unlabeled <- unlabeled %>%
+  mutate(digit4 = ifelse(str_detect(translatedText,"[:digit:]{4}"),1,0))
+
+## load dfm.train.under
+dfm.train.under <- load("traindfmunder.Rdata")
+
+## load model <model is in file called rflist.Rdata, on 5th element
+rfb <- load("rflist.rdata")
+rf.best <- rfb[[5]]
+
+## function to generate dfm
+predict.unlabeled <- function(data, model) {
+  ## preprocessing unlabeled
+  #create a corpus
+  corpus <- corpus(data$translatedText) 
+  #create document frequency matrix with verb
+  dfm.unlabeled <- dfm(corpus, 
+             tolower=TRUE,  
+             remove_punct =TRUE, 
+             remove_numbers=TRUE,
+             remove_symbols = TRUE,
+             remove_hyphens = TRUE,
+             remove=stopwords('english', source = "snowball"), 
+             stem=TRUE, 
+             verbose=TRUE)
+  
+  dfm.unlabeled <- dfm_select(dfm.unlabeled, pattern = dfm.train.under)
+  
+  df <- data.frame(label=as.factor(0),
+                     digit4 = data$digit4,
+                     dfm.unlabeled) %>%
+    select(-doc_id)
+
+  labelpredict.unlabeled <-predict(model, df)
+  return(labelpredict.unlabeled)
+}
+
+labeled <- predict.unlabeled(data = unlabeled.list[[i]], model = rf.best))
+
+write_csv(labeled, file = "unlabeledwithpredicted_fin.csv")
+```
+
+- Next steps, the labeled dataset can be used to explain other pattern such as fishery collapse, trading.
+- All code, report and supporting file are in seafood globalization github repository.
