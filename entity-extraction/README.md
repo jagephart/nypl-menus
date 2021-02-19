@@ -10,8 +10,8 @@ Houses the code neccessary to load the custom spaCy model.
 
 ### Test Results
 
-- Overall Model F-score: 77.329
-- Label scores
+- **Overall Model F-score**: 77.329
+- Label F-scores
   - `SEAFOOD`: 75.096
   - `SIDE`: 78.601
   - `METHOD`: 78.543
