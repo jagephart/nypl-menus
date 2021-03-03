@@ -17,11 +17,13 @@
   },
   "pipeline":[
     "sentencizer",
-    "ner"
+    "ner",
+    "parser"
   ],
   "factories":{
     "sentencizer":"sentencizer",
-    "ner":"ner"
+    "ner":"ner",
+    "parser":"parser"
   },
   "labels":{
     "ner":[
@@ -29,6 +31,12 @@
       "METHOD",
       "SEAFOOD",
       "SIDE"
+    ],
+    "parser":[
+      "ROOT",
+      "SERVED",
+      "SUBJECT",
+      "dep"
     ]
   }
 }
