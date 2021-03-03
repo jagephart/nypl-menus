@@ -16,14 +16,10 @@
     "name":"spacy_pretrained_vectors"
   },
   "pipeline":[
-    "sentencizer",
-    "ner",
-    "parser"
+    "ner"
   ],
   "factories":{
-    "sentencizer":"sentencizer",
-    "ner":"ner",
-    "parser":"parser"
+    "ner":"ner"
   },
   "labels":{
     "ner":[
@@ -31,12 +27,6 @@
       "METHOD",
       "SEAFOOD",
       "SIDE"
-    ],
-    "parser":[
-      "ROOT",
-      "SERVED",
-      "SUBJECT",
-      "dep"
     ]
   }
 }
